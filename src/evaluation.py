@@ -124,6 +124,12 @@ def log_results(method: str, params: dict, res: dict, runtime: float, extra_note
                         f"{runtime:.2f}", notes])
 
 
+SELECT_DEFS = ("n_days", "n_airings")
+
+
 def selection_score(res: dict) -> float:
-    """Model selection criterion: mean MAP@5 over the three target definitions on the test users."""
-    return sum(res[("test_users", d)][1] for d in TARGET_DEFS) / len(TARGET_DEFS)
+    """Model selection criterion: mean MAP@5 of the frequency targets on the test users.
+
+    Stage 2 (src/baselines.py results) used the mean over all three targets; switched after the first Kaggle
+    scores, see docs/target_definition.md."""
+    return sum(res[("test_users", d)][1] for d in SELECT_DEFS) / len(SELECT_DEFS)
