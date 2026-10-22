@@ -222,3 +222,6 @@ __marimo__/
 # Project
 data/
 .venv/
+
+# Course spec (not for public repo)
+docs/exam_quiz_GSB.md
