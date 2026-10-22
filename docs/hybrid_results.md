@@ -39,3 +39,5 @@ Produced by `python -m src.hybrid` on 2026-10-22 16:58. Validation on the 1260 t
 Selected: `{'objective': 'binary', 'num_leaves': 15, 'min_child_samples': 20, 'n_trees': 363, 'n_cand': 20, 'train': 'weeks 11-20 -> 21-30, non-test users'}` (select 0.4660); repeat 0.4499. Clearly beats repeat (>= +0.01 and temporal check above repeat): True. Submission: hybrid_v1.csv: format OK.
 
 Total runtime: 93.3 s.
+
+Regenerated 2026-10-22 17:01 with `python -m src.hybrid --final-only` using `{'min_child_samples': 100, 'n_cand': 20, 'n_trees': 189, 'num_leaves': 15, 'objective': 'lambdarank_log', 'train': 'weeks 11-20 -> 21-30, non-test users'}` (objective with the best temporal check): hybrid_v1.csv: format OK.

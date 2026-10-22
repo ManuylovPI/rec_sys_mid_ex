@@ -27,7 +27,7 @@ validation, so no label from weeks 21-30 is used in training at all.
 Final: model trained on weeks 11-20 -> 21-30 with all users and the validated number of trees, applied to
 features from weeks 11-30 for the target weeks 31-42.
 
-Usage: python -m src.hybrid   ->  experiments.csv rows, docs/hybrid_results.md,
+Usage: python -m src.hybrid [--final-only]   ->  experiments.csv rows, docs/hybrid_results.md,
                                   docs/hybrid_feature_importance.md, docs/methods_results.md section,
                                   submissions/hybrid_v1.csv (only if it clearly beats repeat)
 """
@@ -39,6 +39,7 @@ import dataclasses  # noqa: E402
 import datetime as dt  # noqa: E402
 import itertools  # noqa: E402
 import json  # noqa: E402
+import sys  # noqa: E402
 import time  # noqa: E402
 
 import implicit  # noqa: E402
@@ -337,7 +338,46 @@ def component_rows() -> dict[str, dict]:
     return out
 
 
+def write_final(con, data, best, p: dict, val: "Window", all_users: list[int]) -> str:
+    """Train on weeks 11-20 -> 21-30 with all users and p['n_trees'] trees, predict weeks 31-42, write + check."""
+    users = test_users()
+    fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best)
+    cand_all = val.candidates(all_users)
+    f_all = val.features(cand_all).merge(val.labels(data.usw, cand_all), on=["user_id", "tv_show_id"])
+    model = train(f_all, p["objective"], p["num_leaves"], p["min_child_samples"], n_estimators=p["n_trees"])
+    f_fin = fin.features(fin.candidates(users))
+    preds = fill(top5(f_fin, score(model, f_fin)), users, fin.st.fallback)
+    write_submission(preds, users, SUB)
+    problems = check_submission(SUB, set(int(x) for x in fin.pool))
+    log = ROOT / "submissions" / "LOG.md"
+    kept = [ln for ln in log.read_text(encoding="utf-8").splitlines() if not ln.startswith(f"| {SUB.name} |")]
+    kept.append(f"| {SUB.name} | hybrid LightGBM re-ranker {p}; trained weeks 11-20 -> 21-30 on all users with "
+                f"{p['n_trees']} trees; features weeks 11-30, pool = labelled shows airing weeks 31-42 | "
+                f"{dt.date.today().isoformat()} |  |  |  |")
+    log.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    note = f"{SUB.name}: format {'OK' if not problems else problems}"
+    print(note, flush=True)
+    return note
+
+
+def final_only() -> None:
+    """Regenerate the submission from the stored final config without re-running the grid."""
+    from src.data import connect
+    con = connect()
+    best = load_best()
+    data = validation_data()
+    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best)
+    all_users = sorted(set(val.hist["user_id"].tolist()) | set(data.populations["test_users"]))
+    note = write_final(con, data, best, best["hybrid_final"], val, all_users)
+    with open(OUT_MD, "a", encoding="utf-8") as fh:
+        fh.write(f"\nRegenerated {dt.datetime.now():%Y-%m-%d %H:%M} with `python -m src.hybrid --final-only` using "
+                 f"`{best['hybrid_final']}` (objective with the best temporal check): {note}.\n")
+
+
 def main() -> None:
+    if "--final-only" in sys.argv:
+        final_only()
+        return
     t_all = time.time()
     from src.data import connect
     con = connect()
@@ -421,25 +461,11 @@ def main() -> None:
     save_best("hybrid", best_row["params"])
     save_best("hybrid_select", best_row["select"])
 
-    # ---- final
-    sub_note = "not written"
-    if clear:
-        users = test_users()
-        fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best)
-        cand_all = val.candidates(all_users)
-        f_all = val.features(cand_all).merge(val.labels(data.usw, cand_all), on=["user_id", "tv_show_id"])
-        p = best_row["params"]
-        model = train(f_all, p["objective"], p["num_leaves"], p["min_child_samples"], n_estimators=p["n_trees"])
-        f_fin = fin.features(fin.candidates(users))
-        preds = fill(top5(f_fin, score(model, f_fin)), users, fin.st.fallback)
-        write_submission(preds, users, SUB)
-        problems = check_submission(SUB, set(int(x) for x in fin.pool))
-        sub_note = f"{SUB.name}: format {'OK' if not problems else problems}"
-        with open(ROOT / "submissions" / "LOG.md", "a", encoding="utf-8") as fh:
-            fh.write(f"| {SUB.name} | hybrid LightGBM re-ranker {p}; trained weeks 11-20 -> 21-30 on all users with "
-                     f"{p['n_trees']} trees; features weeks 11-30, pool = labelled shows airing weeks 31-42 | "
-                     f"{dt.date.today().isoformat()} |  |  |  |\n")
-        print(sub_note, flush=True)
+    # ---- final: the main-grid config of the objective whose temporal check scored best
+    final_obj = best_temporal["params"]["objective"]
+    final_params = max((r for r in rows if r["params"]["objective"] == final_obj), key=lambda r: r["select"])["params"]
+    save_best("hybrid_final", final_params)
+    sub_note = write_final(con, data, best, final_params, val, all_users) if clear else "not written"
 
     # ---- reports
     def fmt_row(name, r):
@@ -462,7 +488,8 @@ def main() -> None:
     lines += [f"| `{r['params']}` | {r['select']:.4f} | {r['n_days']:.4f} | {r['n_airings']:.4f} | {r['watch_sec']:.4f} |"
               for r in temporal_rows]
     lines += ["", f"Selected: `{best_row['params']}` (select {best_row['select']:.4f}); repeat {repeat_sel:.4f}. "
-              f"Clearly beats repeat (>= +{CLEAR_MARGIN} and temporal check above repeat): {clear}. Submission: {sub_note}.",
+              f"Clearly beats repeat (>= +{CLEAR_MARGIN} and temporal check above repeat): {clear}. Final config "
+              f"(objective with the best temporal check): `{final_params}`. Submission: {sub_note}.",
               "", f"Total runtime: {time.time() - t_all:.1f} s."]
     OUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

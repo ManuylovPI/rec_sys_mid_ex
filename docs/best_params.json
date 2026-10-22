@@ -27,6 +27,14 @@
     "objective": "binary",
     "train": "weeks 11-20 -> 21-30, non-test users"
   },
+  "hybrid_final": {
+    "min_child_samples": 100,
+    "n_cand": 20,
+    "n_trees": 189,
+    "num_leaves": 15,
+    "objective": "lambdarank_log",
+    "train": "weeks 11-20 -> 21-30, non-test users"
+  },
   "hybrid_select": 0.466030423280423,
   "repeat": {
     "beta": 10,
