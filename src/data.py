@@ -34,6 +34,10 @@ def connect(memory_limit: str = "8GB") -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     con.execute(f"SET memory_limit = '{memory_limit}'")
     con.execute(f"SET temp_directory = '{_p(PROCESSED / 'duckdb_tmp')}'")
+    # All timestamps are naive local wall-clock values. Pin the session to UTC so that no TIMESTAMPTZ
+    # conversion can shift them (before 2026-10-22 the Windows default Europe/Moscow shifted epoch -> timestamp
+    # conversions by +3 h; see docs/errata.md).
+    con.execute("SET TimeZone = 'UTC'")
     return con
 
 

@@ -39,7 +39,7 @@ or any minimum watch threshold), and the two frequency targets cannot be told ap
 
 ## Study: alternative target definitions
 
-Produced by `python -m src.target_study` on 2026-10-22 17:02. Validation weeks 11-20 -> 21-30, 1260 test users, pool 6376 shows, exactly the three submitted configs. Start-time join over raw views: 5408469 views matched to an airing, 2776875 of them to a labelled airing (4912 users).
+Produced by `python -m src.target_study` on 2026-10-22 17:16. Validation weeks 11-20 -> 21-30, 1260 test users, pool 6376 shows, exactly the three submitted configs. Start-time join over raw views: 5408469 views matched to an airing, 2776875 of them to a labelled airing (4912 users).
 
 Leaderboard (public / private): popularity_v1 0.255 / 0.244, repeat_v1 0.332 / 0.314, repeat_v2 0.36752 / 0.348. LB gaps (public): repeat_v1/pop 1.302, repeat_v2/pop 1.441, repeat_v2/repeat_v1 1.107.
 
@@ -49,33 +49,38 @@ Leaderboard (public / private): popularity_v1 0.255 / 0.244, repeat_v1 0.332 / 0
 
 | definition | pop_v1 | repeat_v1 | repeat_v2 | LB/val ratios (public) | cv public | max rel err public | cv private | max rel err private | val gap v1/pop | val gap v2/pop | val gap v2/v1 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| n_days | 0.3174 | 0.4142 | 0.4558 | 0.803 / 0.802 / 0.806 | 0.0024 | 0.0031 | 0.0057 | 0.0080 | 1.305 | 1.436 | 1.100 |
-| n_airings | 0.3100 | 0.4062 | 0.4424 | 0.823 / 0.817 / 0.831 | 0.0067 | 0.0084 | 0.0084 | 0.0114 | 1.311 | 1.427 | 1.089 |
-| start_days | 0.2806 | 0.3750 | 0.4043 | 0.909 / 0.885 / 0.909 | 0.0123 | 0.0168 | 0.0158 | 0.0198 | 1.336 | 1.441 | 1.078 |
-| days_50pct | 0.2768 | 0.3463 | 0.3743 | 0.921 / 0.959 / 0.982 | 0.0262 | 0.0419 | 0.0217 | 0.0329 | 1.251 | 1.352 | 1.081 |
-| days_300s | 0.2858 | 0.3973 | 0.4209 | 0.892 / 0.836 / 0.873 | 0.0271 | 0.0331 | 0.0315 | 0.0415 | 1.390 | 1.473 | 1.060 |
-| airings_300s | 0.2788 | 0.3893 | 0.4094 | 0.915 / 0.853 / 0.898 | 0.0293 | 0.0364 | 0.0336 | 0.0420 | 1.396 | 1.468 | 1.052 |
-| airings_50pct | 0.2710 | 0.3373 | 0.3620 | 0.941 / 0.984 / 1.015 | 0.0312 | 0.0492 | 0.0268 | 0.0402 | 1.244 | 1.335 | 1.073 |
-| start_views | 0.2271 | 0.3369 | 0.3491 | 1.123 / 0.986 / 1.053 | 0.0532 | 0.0747 | 0.0581 | 0.0829 | 1.483 | 1.537 | 1.036 |
-| watch_sec | 0.1799 | 0.2988 | 0.2953 | 1.417 / 1.111 / 1.245 | 0.0996 | 0.1432 | 0.1047 | 0.1509 | 1.661 | 1.641 | 0.988 |
+| n_days | 0.3167 | 0.4108 | 0.4512 | 0.805 / 0.808 / 0.815 | 0.0048 | 0.0064 | 0.0040 | 0.0056 | 1.297 | 1.425 | 1.098 |
+| n_airings | 0.3100 | 0.4062 | 0.4395 | 0.823 / 0.817 / 0.836 | 0.0096 | 0.0116 | 0.0102 | 0.0142 | 1.311 | 1.418 | 1.082 |
+| start_days | 0.2806 | 0.3750 | 0.4023 | 0.909 / 0.885 / 0.914 | 0.0137 | 0.0190 | 0.0166 | 0.0220 | 1.336 | 1.433 | 1.073 |
+| days_50pct | 0.2758 | 0.3462 | 0.3738 | 0.925 / 0.959 / 0.983 | 0.0251 | 0.0395 | 0.0208 | 0.0306 | 1.256 | 1.356 | 1.080 |
+| days_300s | 0.2809 | 0.3928 | 0.4158 | 0.908 / 0.845 / 0.884 | 0.0292 | 0.0372 | 0.0338 | 0.0457 | 1.398 | 1.480 | 1.059 |
+| airings_300s | 0.2788 | 0.3893 | 0.4077 | 0.915 / 0.853 / 0.901 | 0.0299 | 0.0382 | 0.0339 | 0.0412 | 1.396 | 1.462 | 1.047 |
+| airings_50pct | 0.2710 | 0.3373 | 0.3600 | 0.941 / 0.984 / 1.021 | 0.0333 | 0.0514 | 0.0291 | 0.0424 | 1.244 | 1.328 | 1.068 |
+| cont70_days | 0.2680 | 0.3215 | 0.3445 | 0.952 / 1.033 / 1.067 | 0.0475 | 0.0788 | 0.0429 | 0.0697 | 1.200 | 1.286 | 1.071 |
+| cont70_airings | 0.2644 | 0.3138 | 0.3360 | 0.965 / 1.058 / 1.094 | 0.0525 | 0.0877 | 0.0478 | 0.0785 | 1.187 | 1.271 | 1.070 |
+| start_views | 0.2271 | 0.3369 | 0.3483 | 1.123 / 0.986 / 1.055 | 0.0531 | 0.0739 | 0.0580 | 0.0821 | 1.483 | 1.534 | 1.034 |
+| cont80_days | 0.2646 | 0.3108 | 0.3343 | 0.964 / 1.068 / 1.099 | 0.0557 | 0.0943 | 0.0509 | 0.0851 | 1.174 | 1.263 | 1.076 |
+| cont80_airings | 0.2601 | 0.3018 | 0.3233 | 0.981 / 1.100 / 1.137 | 0.0621 | 0.1053 | 0.0574 | 0.0960 | 1.161 | 1.243 | 1.071 |
+| cont90_days | 0.2637 | 0.3035 | 0.3273 | 0.967 / 1.094 / 1.123 | 0.0638 | 0.1092 | 0.0590 | 0.0999 | 1.151 | 1.241 | 1.078 |
+| cont90_airings | 0.2580 | 0.2943 | 0.3155 | 0.988 / 1.128 / 1.165 | 0.0695 | 0.1188 | 0.0648 | 0.1094 | 1.141 | 1.223 | 1.072 |
+| watch_sec | 0.1799 | 0.2988 | 0.2942 | 1.417 / 1.111 / 1.249 | 0.0994 | 0.1419 | 0.1045 | 0.1496 | 1.661 | 1.635 | 0.985 |
 
-Test users with a non-empty ground truth: n_days 1246, n_airings 1246, start_days 1246, days_50pct 1244, days_300s 1246, airings_300s 1246, airings_50pct 1244, start_views 1246, watch_sec 1246.
+Test users with a non-empty ground truth: n_days 1246, n_airings 1246, start_days 1246, days_50pct 1244, days_300s 1246, airings_300s 1246, airings_50pct 1244, cont70_days 1241, cont70_airings 1241, start_views 1246, cont80_days 1236, cont80_airings 1236, cont90_days 1226, cont90_airings 1226, watch_sec 1246.
 
-Runtime: 8.4 s.
-### Conclusion (written by hand from the table above)
+Runtime: 9.3 s.
+### Conclusion (written by hand from the table above; data after the time-zone fix, docs/errata.md)
 
-- The current **n_days** definition (distinct days with any overlap of a labelled airing) matches the
-  leaderboard best: LB/val ratios 0.803 / 0.802 / 0.806 (public), cv 0.0024, and its validation gaps
-  (1.305, 1.436, 1.100) reproduce the public LB gaps (1.302, 1.441, 1.107) within about 0.7%. The private LB
-  gives the same ordering (cv 0.0057, best of all definitions).
-- **n_airings** is second (cv 0.0067). The start-time hypothesis is not supported: **start_views** ranks 8th of 9
-  (cv 0.053) and over-states the gap between repeat_v1 and popularity (1.483 vs 1.302); **start_days** ranks 3rd
-  (cv 0.0123). Thresholded definitions (300 s, 50%) fit worse than the unthresholded ones.
-- Consequence: the counts and labels are not rebuilt on start-time logic. n_days is the best available
-  proxy for the hidden target.
-- Caveats: three configs give only two independent gap ratios, so this ranks the candidate definitions; it does
-  not identify the organisers' exact rule. The three configs are related (two are repeat variants), which
-  limits how different their behaviour under the definitions can be. All validation numbers come from the
-  same 1,260 test users and weeks 21-30.
-- Note: the first run of `src.target_study` crashed after logging its 27 rows to experiments.csv (a DuckDB API
-  change in the report step); the rerun logged the same 27 deterministic values again.
+- **n_days** (distinct calendar days with any overlap of a labelled airing) still matches the leaderboard best:
+  public cv 0.0048 and private cv 0.0040 (best of all 15 definitions on private, best on public), validation gaps
+  1.297 / 1.425 / 1.098 vs public LB gaps 1.302 / 1.441 / 1.107. Before the fix the same definition (with days
+  effectively starting at 21:00) gave public cv 0.0024 and private cv 0.0057; the ranking of definitions did not
+  change.
+- **Continuous-coverage definitions** (one continuous view covering >= 70 / 80 / 90% of an airing; the 80% rule
+  is attributed to the prize-winning write-up in docs/external_sources.md, which we could not read ourselves)
+  fit clearly worse: cv 0.048-0.070. They compress the gaps between the three submissions (repeat_v1 / popularity
+  1.14-1.20 vs 1.30 on the LB). On this evidence the 80% rule is not how the leaderboard ground truth is built;
+  it may have been the write-up's own training label, which our data cannot confirm or rule out.
+- Start-time and thresholded definitions keep their earlier ranks (start_days 3rd, start_views and all
+  coverage definitions near the bottom).
+- Same caveat as before: three related submissions give two independent gap ratios, so this ranks candidate
+  definitions; it does not identify the exact rule.

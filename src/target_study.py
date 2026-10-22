@@ -10,6 +10,8 @@ Definitions (top-5 per user, pool shows only, ties by overlap seconds then tv_sh
   airings_300s    airings with >= 300 s overlap          days_300s   distinct days with such an airing
   airings_50pct   airings with >= 50% of the airing watched;  days_50pct  distinct days
   n_days, n_airings, watch_sec   current definitions (any overlap)
+  cont{70,80,90}_airings / _days  airings where ONE continuous view on the channel (src.coverage) covers
+                  >= 70/80/90% of the airing, counted / distinct days (hypothesis from docs/external_sources.md #1)
 Start-time join: DuckDB ASOF join (latest airing on the channel with airing.start <= view.start), kept only if
 view.start < airing.end. Raw views, not merged ones (the organisers would not have merged devices). Cached as
 data/processed/view_starts.parquet for all training weeks.
@@ -73,6 +75,13 @@ def target_tables(con, usw: pd.DataFrame, weeks, pool: pd.Index) -> dict[str, pd
             WHERE week BETWEEN {w0} AND {w1} AND {cond} GROUP BY ALL""").df()
         out[f"airings_{name}"] = t[["user_id", "tv_show_id", "airings"]].rename(columns={"airings": f"airings_{name}"})
         out[f"days_{name}"] = t[["user_id", "tv_show_id", "days"]].rename(columns={"days": f"days_{name}"})
+    for pct in (70, 80, 90):
+        t = con.sql(f"""
+            SELECT user_id, tv_show_id, count(*) AS a, count(DISTINCT day) AS d
+            FROM '{(PROCESSED / 'coverage.parquet').as_posix()}'
+            WHERE week BETWEEN {w0} AND {w1} AND cont_frac >= {pct / 100} GROUP BY ALL""").df()
+        out[f"cont{pct}_airings"] = t[["user_id", "tv_show_id", "a"]].rename(columns={"a": f"cont{pct}_airings"})
+        out[f"cont{pct}_days"] = t[["user_id", "tv_show_id", "d"]].rename(columns={"d": f"cont{pct}_days"})
     cur = window(usw, weeks).groupby(["user_id", "tv_show_id"], as_index=False)[["n_days", "n_airings", "watch_sec"]].sum()
     for c in ("n_days", "n_airings"):
         out[c] = cur[["user_id", "tv_show_id", c]]

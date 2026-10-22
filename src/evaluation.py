@@ -19,6 +19,8 @@ TEST_WEEKS = (31, 42)        # submission target
 
 TARGET_DEFS = ("watch_sec", "n_days", "n_airings")
 EXPERIMENTS = ROOT / "experiments.csv"
+# Rows logged before the time-zone fix carry no data tag; see docs/errata.md.
+DATA_VERSION = "tzfix"
 EXP_HEADER = ["timestamp", "stage", "method", "params_json", "seed", "n_val_users", "val_map5", "runtime_sec", "notes"]
 
 
@@ -119,7 +121,7 @@ def log_results(method: str, params: dict, res: dict, runtime: float, extra_note
         if new:
             w.writerow(EXP_HEADER)
         for (pop, d), (n, score) in res.items():
-            notes = f"target={d}; population={pop}" + (f"; {extra_notes}" if extra_notes else "")
+            notes = f"target={d}; population={pop}" + (f"; {extra_notes}" if extra_notes else "") + f"; data={DATA_VERSION}"
             w.writerow([ts, stage, method, json.dumps(params, sort_keys=True), SEED, n, f"{score:.6f}",
                         f"{runtime:.2f}", notes])
 

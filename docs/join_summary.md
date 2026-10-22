@@ -1,10 +1,10 @@
 # View-schedule join summary
 
-Generated 2026-10-22 16:18:06 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
+Generated 2026-10-22 17:15:31 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
 
 Produced by `python -m src.build_interactions`. No watch threshold is applied in the cached tables. `frac_watched` = overlap seconds / airing duration for one airing; in `user_show_week`, `frac_max` is the best single-airing fraction that week, `frac_total` = watch_sec / summed duration of the airings touched.
 
-Timings (s): schedule 5.1, merge_views 4.7, join 0.8, aggregate_and_write 4.3; total 15.5.
+Timings (s): schedule 4.3, merge_views 4.3, join 0.7, aggregate_and_write 3.8; total 13.5.
 
 ## Row counts
 

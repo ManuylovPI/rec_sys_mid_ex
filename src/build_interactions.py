@@ -111,7 +111,7 @@ def build(con) -> dict:
         SELECT p.user_id, p.airing_id, p.week, s.channel_id, s.tv_show_id, s.start_time AS air_start,
                s.duration AS air_duration, sum(p.overlap_sec)::BIGINT AS overlap_sec,
                sum(p.overlap_sec) / max(s.duration) AS frac_watched, count(*) AS n_segments,
-               to_timestamp(min(p.ov_start))::TIMESTAMP AS first_overlap_start
+               make_timestamp(min(p.ov_start) * 1000000) AS first_overlap_start  -- naive, no time-zone conversion
         FROM seg_pairs p JOIN schedule s USING (airing_id)
         WHERE {cond}
         GROUP BY ALL

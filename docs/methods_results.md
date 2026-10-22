@@ -39,16 +39,18 @@ Total runtime: 7.9 s.
 
 ## Hybrid vs components (test users)
 
-Produced by `python -m src.hybrid`. Components from experiments.csv; hybrid = best re-ranker (trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).
+Produced by `python -m src.hybrid --coverage`. Components from experiments.csv (rows on the fixed data where available, docs/errata.md); hybrid = best re-ranker (trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).
 
 | method | select | n_days | n_airings | watch_sec |
 |---|---|---|---|---|
-| popularity | 0.3174 | 0.3174 | 0.3100 | 0.1799 |
-| repeat | 0.4566 | 0.4566 | 0.4432 | 0.2947 |
-| als | 0.2998 | 0.2998 | 0.2927 | 0.1832 |
-| cbf | 0.1286 | 0.1286 | 0.1276 | 0.0886 |
-| slot habits | 0.4048 | 0.4048 | 0.4240 | 0.2637 |
-| hybrid v1 | 0.4733 | 0.4733 | 0.4568 | 0.3036 |
-| hybrid v1, temporal check | 0.4636 | 0.4636 | 0.4526 | 0.2921 |
-| hybrid v2 (+ slot habits) | 0.4756 | 0.4756 | 0.4628 | 0.3021 |
-| hybrid v2, temporal check | 0.4698 | 0.4698 | 0.4606 | 0.2945 |
+| popularity | 0.3167 | 0.3167 | 0.3100 | 0.1799 |
+| repeat | 0.4535 | 0.4535 | 0.4422 | 0.2940 |
+| als | 0.2927 | 0.2927 | 0.2911 | 0.1818 |
+| cbf | 0.1276 | 0.1276 | 0.1265 | 0.0882 |
+| slot habits | 0.4041 | 0.4041 | 0.4240 | 0.2637 |
+| hybrid v2 (+ slot habits), before tz fix | 0.4756 | 0.4756 | 0.4628 | 0.3021 |
+| hybrid v2, temporal check, before tz fix | 0.4698 | 0.4698 | 0.4606 | 0.2945 |
+| hybrid v2 (+ slot habits), fixed data | 0.4748 | 0.4748 | 0.4639 | 0.3050 |
+| hybrid v2, temporal check, fixed data | 0.4651 | 0.4651 | 0.4582 | 0.2939 |
+| hybrid v3 (+ coverage, schedule change, channel) | 0.4762 | 0.4762 | 0.4650 | 0.3047 |
+| hybrid v3, temporal check | 0.4620 | 0.4620 | 0.4548 | 0.2965 |

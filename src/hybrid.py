@@ -74,6 +74,9 @@ NUM_LEAVES = [15, 63]
 MIN_CHILD = [20, 100]
 CLEAR_MARGIN = 0.01  # "clearly beats" margin on the selection score
 SLOT_FEATURES = ["slot_score", "slot_rank", "slot_hours", "repl_score", "s_no_view_hist"]
+COV_FEATURES = ["cov30", "cov50", "cov80", "cov80_rank", "cov80_share", "s_sched_ratio_airings", "s_sched_ratio_days",
+                "s_channel"]
+CATEGORICAL = ["s_category", "s_channel"]
 
 
 def pq(name: str) -> str:
@@ -83,9 +86,10 @@ def pq(name: str) -> str:
 class Window:
     """Candidates and features for one (history window, target window)."""
 
-    def __init__(self, con, usw, hist_weeks, target_weeks, best, slots: bool = False):
+    def __init__(self, con, usw, hist_weeks, target_weeks, best, slots: bool = False, coverage: bool = False):
         t0 = time.time()
         self.slots = slots
+        self.coverage = coverage
         self.hw, self.tw = hist_weeks, target_weeks
         h0, h1 = hist_weeks
         t_0, t_1 = target_weeks
@@ -137,6 +141,13 @@ class Window:
         shows["s_pop_users"] = all_hist.groupby("tv_show_id")["user_id"].nunique().reindex(self.pool).fillna(0).to_numpy() / n_users
         shows["s_pop_days_pw"] = all_hist.groupby("tv_show_id")["n_days"].sum().reindex(self.pool).fillna(0).to_numpy() / self.n_hist
         shows["pop_rank"] = shows["s_pop_sec_pw"].rank(ascending=False, method="first")
+        hist_airings = sw.groupby("tv_show_id")["n_airings"].sum().reindex(self.pool).fillna(0).to_numpy() / self.n_hist
+        shows["s_sched_ratio_airings"] = (shows["s_t_airings_pw"] + 0.1) / (hist_airings + 0.1)
+        shows["s_sched_ratio_days"] = (shows["s_t_days_pw"] + 0.1) / (shows["s_hist_air_days_pw"] + 0.1)
+        main_ch = con.sql(f"""
+            SELECT tv_show_id, mode(channel_id) AS ch FROM '{pq('schedule')}'
+            WHERE tv_show_id <> 0 AND week BETWEEN {t_0} AND {t_1} GROUP BY 1""").df().set_index("tv_show_id")["ch"]
+        shows["s_channel"] = main_ch.reindex(self.pool).to_numpy()
         meta = con.sql(f"""
             SELECT tv_show_id, mode(tv_show_category) AS cat FROM '{pq('schedule')}'
             WHERE tv_show_id <> 0 AND week <= {h1} GROUP BY 1""").df().set_index("tv_show_id")["cat"]
@@ -206,6 +217,19 @@ class Window:
         self.chan = cr.rename(columns={"score": "chan_score"})
         watched = set(window(usw, hist_weeks)["tv_show_id"].unique().tolist())
         self.shows["s_no_view_hist"] = (~self.shows.index.isin(list(watched))).astype(int)
+
+        # ---- continuous-view coverage counts (coverage version)
+        if coverage:
+            c = con.sql(f"""
+                SELECT user_id, tv_show_id, week,
+                       count(*) FILTER (WHERE cont_frac >= 0.3) AS c30, count(*) FILTER (WHERE cont_frac >= 0.5) AS c50,
+                       count(*) FILTER (WHERE cont_frac >= 0.8) AS c80
+                FROM '{pq('coverage')}' WHERE week BETWEEN {h0} AND {h1} GROUP BY ALL""").df()
+            dw = 0.5 ** ((h1 - c["week"]) / HL) / dnorm
+            cov = c[["user_id", "tv_show_id"]].assign(cov30=c["c30"] * dw, cov50=c["c50"] * dw, cov80=c["c80"] * dw) \
+                .groupby(["user_id", "tv_show_id"], as_index=False)[["cov30", "cov50", "cov80"]].sum()
+            cov["cov80_rank"] = cov.groupby("user_id")["cov80"].rank(ascending=False, method="first")
+            self.cov = cov
 
         # ---- slot habits (v2)
         if slots:
@@ -279,6 +303,10 @@ class Window:
         uh = self.user_hod.reindex(f["user_id"].to_numpy()).to_numpy()
         shh = self.show_hod.reindex(f["tv_show_id"].to_numpy()).to_numpy()
         f["tod_fit"] = np.nansum(uh * shh, axis=1)
+        if self.coverage:
+            f = f.merge(self.cov, on=["user_id", "tv_show_id"], how="left")
+            f[["cov30", "cov50", "cov80"]] = f[["cov30", "cov50", "cov80"]].fillna(0)
+            f["cov80_share"] = np.where(f["h_d_airings"] > 0, f["cov80"] / f["h_d_airings"], np.nan)
         if self.slots:
             si = pd.Series(np.arange(len(self.slot_items)), index=self.slot_items).reindex(f["tv_show_id"]).fillna(-1).astype(int).to_numpy()
             su = np.array([self.slot_pos.get(int(u), -1) for u in f["user_id"]])
@@ -314,13 +342,18 @@ FEATURES = ["u_sec_pw", "u_days_frac", "u_n_shows",
             "s_pop_days_pw", "pop_rank", "s_category"]
 
 
-CFG = {"slots": False, "method": "hybrid_lgbm", "out_md": OUT_MD, "imp_md": IMP_MD, "sub": SUB, "key": "hybrid",
+CFG = {"slots": False, "coverage": False, "method": "hybrid_lgbm", "out_md": OUT_MD, "imp_md": IMP_MD, "sub": SUB, "key": "hybrid",
        "features": FEATURES}
 
 
-def set_version(slots: bool) -> None:
-    """v1 = original hybrid; v2 (--slots) = slot-habit candidates and features."""
-    if slots:
+def set_version(slots: bool, coverage: bool = False) -> None:
+    """v1 = original hybrid; v2 (--slots) = slot-habit candidates and features; --slots --coverage adds the
+    continuous-coverage counts, schedule-change ratios and channel (written to hybrid_v2.csv if clearly better)."""
+    if coverage:
+        CFG.update(slots=True, coverage=True, method="hybrid_lgbm_cov", out_md=ROOT / "docs" / "hybrid_cov_results.md",
+                   imp_md=ROOT / "docs" / "hybrid_cov_feature_importance.md", sub=ROOT / "submissions" / "hybrid_v2.csv",
+                   key="hybrid_cov", features=FEATURES + SLOT_FEATURES + COV_FEATURES)
+    elif slots:
         CFG.update(slots=True, method="hybrid_lgbm_slots", out_md=ROOT / "docs" / "hybrid_v2_results.md",
                    imp_md=ROOT / "docs" / "hybrid_v2_feature_importance.md", sub=ROOT / "submissions" / "hybrid_v2.csv",
                    key="hybrid_v2", features=FEATURES + SLOT_FEATURES)
@@ -349,7 +382,7 @@ def train(df: pd.DataFrame, objective: str, num_leaves: int, min_child: int, n_e
     hold = set(rng.choice(users, size=len(users) // 10, replace=False).tolist()) if n_estimators is None else set()
     is_hold = df["user_id"].isin(hold).to_numpy()
     tr, va = df[~is_hold], df[is_hold]
-    cat = ["s_category"]
+    cat = [c for c in CATEGORICAL if c in CFG["features"]]
     if objective == "binary":
         model = lgb.LGBMClassifier(objective="binary", **common)
         fit_kw = {}
@@ -391,17 +424,21 @@ def component_rows() -> dict[str, dict]:
         comps.append(("slot habits", "slot", best["slot"]))
     for name, method, params in comps:
         sub = e[(e["method"] == method) & (e["params_json"] == json.dumps(params, sort_keys=True))]
-        sub = sub.drop_duplicates("notes", keep="last")
+        if sub["notes"].str.contains("data=tzfix", regex=False).any():  # prefer rows on the fixed data
+            sub = sub[sub["notes"].str.contains("data=tzfix", regex=False)]
+        sub = sub.assign(target=sub["notes"].str.split(";").str[0]).drop_duplicates("target", keep="last")
         vals = {n.split(";")[0].removeprefix("target="): v for n, v in zip(sub["notes"], sub["val_map5"])}
         out[name] = {"n_days": vals["n_days"], "n_airings": vals["n_airings"], "watch_sec": vals["watch_sec"],
                      "select": sum(vals[d] for d in SELECT_DEFS) / len(SELECT_DEFS)}
     return out
 
 
-def best_logged(method: str, temporal: bool) -> dict:
-    """Test-user scores of the logged config of `method` with the best n_days score (main grid or temporal check)."""
+def best_logged(method: str, temporal: bool, post_fix: bool = True) -> dict:
+    """Test-user scores of the logged config of `method` with the best n_days score (main grid or temporal check),
+    from rows logged after (post_fix) or before the time-zone fix (docs/errata.md)."""
     e = pd.read_csv(EXPERIMENTS)
     e = e[(e["method"] == method) & e["notes"].str.contains("population=test_users", regex=False)]
+    e = e[e["notes"].str.contains("data=tzfix", regex=False) == post_fix]
     e = e[e["notes"].str.contains("temporal check", regex=False) == temporal]
     e = e.assign(target=e["notes"].str.split(";").str[0].str.removeprefix("target="))
     wide = e.drop_duplicates(["params_json", "target"], keep="last").pivot(index="params_json", columns="target", values="val_map5")
@@ -413,7 +450,7 @@ def best_logged(method: str, temporal: bool) -> dict:
 def write_final(con, data, best, p: dict, val: "Window", all_users: list[int]) -> str:
     """Train on weeks 11-20 -> 21-30 with all users and p['n_trees'] trees, predict weeks 31-42, write + check."""
     users = test_users()
-    fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best, slots=CFG["slots"])
+    fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"])
     cand_all = val.candidates(all_users)
     f_all = val.features(cand_all).merge(val.labels(data.usw, cand_all), on=["user_id", "tv_show_id"])
     model = train(f_all, p["objective"], p["num_leaves"], p["min_child_samples"], n_estimators=p["n_trees"])
@@ -439,7 +476,7 @@ def final_only() -> None:
     con = connect()
     best = load_best()
     data = validation_data()
-    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"])
+    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"])
     all_users = sorted(set(val.hist["user_id"].tolist()) | set(data.populations["test_users"]))
     note = write_final(con, data, best, best[CFG["key"] + "_final"], val, all_users)
     with open(CFG["out_md"], "a", encoding="utf-8") as fh:
@@ -448,7 +485,7 @@ def final_only() -> None:
 
 
 def main() -> None:
-    set_version("--slots" in sys.argv)
+    set_version("--slots" in sys.argv or "--coverage" in sys.argv, "--coverage" in sys.argv)
     if "--final-only" in sys.argv:
         final_only()
         return
@@ -461,7 +498,7 @@ def main() -> None:
     test_set = set(test)
     data_test = dataclasses.replace(data, populations={"test_users": test})
 
-    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"])
+    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"])
     all_users = sorted(set(val.hist["user_id"].tolist()) | test_set)
     train_users = [u for u in all_users if u not in test_set]
 
@@ -499,7 +536,7 @@ def main() -> None:
     best_model = models[json.dumps(best_row["params"], sort_keys=True)]
 
     # ---- temporal check: train on 11-15 -> 16-20, evaluate on the same validation
-    early = Window(con, data.usw, *TEMPORAL_TRAIN, best, slots=CFG["slots"])
+    early = Window(con, data.usw, *TEMPORAL_TRAIN, best, slots=CFG["slots"], coverage=CFG["coverage"])
     early_users = [u for u in sorted(set(early.hist["user_id"].tolist())) if u not in test_set]
     cand_e = early.candidates(early_users)
     f_e = early.features(cand_e).merge(early.labels(data.usw, cand_e), on=["user_id", "tv_show_id"])
@@ -524,14 +561,20 @@ def main() -> None:
     imp = imp.sort_values("gain", ascending=False)
     CFG["imp_md"].write_text("\n".join(
         ["# Hybrid re-ranker: feature importance", "",
-         f"Produced by `python -m src.hybrid{' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Model: `{best_row['params']}`.", "",
+         f"Produced by `python -m src.hybrid{' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Model: `{best_row['params']}`.", "",
          "| feature | gain share | splits |", "|---|---|---|"]
         + [f"| {r.feature} | {r.gain_share:.4f} | {r.splits} |" for r in imp.itertuples()]) + "\n", encoding="utf-8")
 
     comp = component_rows()
     repeat_sel = comp["repeat"]["select"]
     best_temporal = max(temporal_rows, key=lambda r: r["select"])
-    if CFG["slots"]:  # must beat hybrid v1 by the margin in both the main run and the temporal check
+    if CFG["coverage"]:  # must beat hybrid v2 re-run on the fixed data by the margin in both runs
+        r_main, r_temp = best_logged("hybrid_lgbm_slots", False), best_logged("hybrid_lgbm_slots", True)
+        ref_main, ref_temporal = r_main["n_days"], r_temp["n_days"]
+        clear = best_row["select"] >= ref_main + CLEAR_MARGIN and best_temporal["select"] >= ref_temporal + CLEAR_MARGIN
+        clear_rule = (f">= hybrid v2 (fixed data) + {CLEAR_MARGIN} on n_days in both runs (v2 main {ref_main:.4f}, "
+                      f"v2 temporal {ref_temporal:.4f})")
+    elif CFG["slots"]:  # must beat hybrid v1 by the margin in both the main run and the temporal check
         ref_main, ref_temporal = v1_reference()
         clear = best_row["select"] >= ref_main + CLEAR_MARGIN and best_temporal["select"] >= ref_temporal + CLEAR_MARGIN
         clear_rule = (f">= v1 + {CLEAR_MARGIN} on n_days in both runs (v1 main {ref_main:.4f}, v1 temporal "
@@ -546,14 +589,17 @@ def main() -> None:
     final_obj = best_temporal["params"]["objective"]
     final_params = max((r for r in rows if r["params"]["objective"] == final_obj), key=lambda r: r["select"])["params"]
     save_best(CFG["key"] + "_final", final_params)
-    sub_note = write_final(con, data, best, final_params, val, all_users) if clear else "not written"
+    if "--no-submission" in sys.argv:
+        sub_note = "not written (--no-submission)"
+    else:
+        sub_note = write_final(con, data, best, final_params, val, all_users) if clear else "not written"
 
     # ---- reports
     def fmt_row(name, r):
         return f"| {name} | {r['select']:.4f} | {r['n_days']:.4f} | {r['n_airings']:.4f} | {r['watch_sec']:.4f} |"
 
-    lines = [f"# Hybrid{' v2 (slot habits)' if CFG['slots'] else ''}: candidate generation + LightGBM re-ranker", "",
-             f"Produced by `python -m src.hybrid{' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Validation on the "
+    lines = [f"# Hybrid{' v3 (slot habits + coverage)' if CFG['coverage'] else ' v2 (slot habits)' if CFG['slots'] else ''}: candidate generation + LightGBM re-ranker", "",
+             f"Produced by `python -m src.hybrid{' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Validation on the "
              f"{len(test)} test users (history weeks 11-20, target weeks 21-30, same pool and fallback as all methods). "
              f"Re-ranker trained on {len(train_users)} non-test users ({len(f_tr)} candidate rows). "
              f"Candidates: top-{N_CAND} of repeat, popularity, ALS, channel{', slot' if CFG['slots'] else ''} lists "
@@ -576,13 +622,20 @@ def main() -> None:
     CFG["out_md"].write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     section = ["## Hybrid vs components (test users)", "",
-               f"Produced by `python -m src.hybrid`. Components from experiments.csv; hybrid = best re-ranker "
+               f"Produced by `python -m src.hybrid{' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}`. Components from experiments.csv (rows on the fixed data where available, docs/errata.md); hybrid = best re-ranker "
                "(trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).", "",
                "| method | select | n_days | n_airings | watch_sec |", "|---|---|---|---|---|"]
     section += [fmt_row(k, v) for k, v in comp.items()]
-    if CFG["slots"]:
-        section += [fmt_row("hybrid v1", best_logged("hybrid_lgbm", False)),
-                    fmt_row("hybrid v1, temporal check", best_logged("hybrid_lgbm", True)),
+    if CFG["coverage"]:
+        section += [fmt_row("hybrid v2 (+ slot habits), before tz fix", best_logged("hybrid_lgbm_slots", False, False)),
+                    fmt_row("hybrid v2, temporal check, before tz fix", best_logged("hybrid_lgbm_slots", True, False)),
+                    fmt_row("hybrid v2 (+ slot habits), fixed data", best_logged("hybrid_lgbm_slots", False)),
+                    fmt_row("hybrid v2, temporal check, fixed data", best_logged("hybrid_lgbm_slots", True)),
+                    fmt_row("hybrid v3 (+ coverage, schedule change, channel)", best_row),
+                    fmt_row("hybrid v3, temporal check", best_temporal)]
+    elif CFG["slots"]:
+        section += [fmt_row("hybrid v1", best_logged("hybrid_lgbm", False, False)),
+                    fmt_row("hybrid v1, temporal check", best_logged("hybrid_lgbm", True, False)),
                     fmt_row("hybrid v2 (+ slot habits)", best_row), fmt_row("hybrid v2, temporal check", best_temporal)]
     else:
         section += [fmt_row("hybrid (LightGBM re-ranker)", best_row), fmt_row("hybrid, temporal check", best_temporal)]
