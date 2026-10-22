@@ -1,0 +1,32 @@
+{
+  "als": {
+    "alpha": 0.3,
+    "bm25_b": 0.8,
+    "bm25_k1": 100,
+    "conf": "n_days_hl8",
+    "factors": 8,
+    "iters": 15,
+    "reg": 0.01,
+    "weighting": "bm25"
+  },
+  "als_select": 0.29625529100529047,
+  "cbf": {
+    "max_actors": 5,
+    "min_df": 2,
+    "people_weight": 4.0,
+    "profile": "linear",
+    "profile_unit": "n_days_hl8",
+    "rep": "tfidf"
+  },
+  "cbf_select": 0.12811507936507913,
+  "repeat": {
+    "beta": 10,
+    "delta": 1.0,
+    "fill": "channels_m3",
+    "half_life": 8,
+    "score": "loyalty",
+    "threshold": "none",
+    "unit": "n_days"
+  },
+  "repeat_select": 0.44992849999999995
+}

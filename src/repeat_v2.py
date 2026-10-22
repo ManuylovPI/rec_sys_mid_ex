@@ -121,6 +121,14 @@ def combine(own: dict, extra: dict | None, users: list[int]) -> dict[int, list[i
     return {u: list(dict.fromkeys(own.get(u, [])[:K] + extra.get(u, []))) for u in users}
 
 
+def predict(st: Stats, params: dict, users: list[int]) -> tuple[dict, dict]:
+    """(own ranking, own + channel fill) for a repeat_v2 params dict; the caller applies the shared fallback."""
+    kw = {k: params[k] for k in ("unit", "threshold", "half_life")}
+    own = st.freq(**kw) if params["score"] == "freq" else st.loyalty(**kw, beta=params["beta"], delta=params["delta"])
+    extra = None if params["fill"] == "global" else st.channel_fill(int(params["fill"].removeprefix("channels_m")))
+    return own, combine(own, extra, users)
+
+
 def main() -> None:
     t_all = time.time()
     con = connect()
@@ -165,10 +173,7 @@ def main() -> None:
     # --- refit on weeks 11-30, predict 31-42
     users = test_users()
     fin = Stats(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS)
-    kw = {k: best[k] for k in ("unit", "threshold", "half_life")}
-    own = fin.freq(**kw) if best["score"] == "freq" else fin.loyalty(**kw, beta=best["beta"], delta=best["delta"])
-    extra = None if best["fill"] == "global" else fin.channel_fill(int(best["fill"].removeprefix("channels_m")))
-    combined = combine(own, extra, users)
+    own, combined = predict(fin, best, users)
     preds = fill(combined, users, fin.fallback)
     write_submission(preds, users, SUB)
     problems = check_submission(SUB, set(int(x) for x in fin.pool.index))
