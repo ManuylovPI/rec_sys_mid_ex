@@ -9,7 +9,7 @@
     "reg": 0.01,
     "weighting": "bm25"
   },
-  "als_select": 0.29625529100529047,
+  "als_select": 0.299825,
   "cbf": {
     "max_actors": 5,
     "min_df": 2,
@@ -18,7 +18,7 @@
     "profile_unit": "n_days_hl8",
     "rep": "tfidf"
   },
-  "cbf_select": 0.12811507936507913,
+  "cbf_select": 0.128598,
   "hybrid": {
     "min_child_samples": 20,
     "n_cand": 20,
@@ -35,7 +35,24 @@
     "objective": "lambdarank_log",
     "train": "weeks 11-20 -> 21-30, non-test users"
   },
-  "hybrid_select": 0.466030423280423,
+  "hybrid_select": 0.473021,
+  "hybrid_v2": {
+    "min_child_samples": 100,
+    "n_cand": 20,
+    "n_trees": 215,
+    "num_leaves": 63,
+    "objective": "lambdarank_log",
+    "train": "weeks 11-20 -> 21-30, non-test users"
+  },
+  "hybrid_v2_final": {
+    "min_child_samples": 100,
+    "n_cand": 20,
+    "n_trees": 215,
+    "num_leaves": 63,
+    "objective": "lambdarank_log",
+    "train": "weeks 11-20 -> 21-30, non-test users"
+  },
+  "hybrid_v2_select": 0.4756349206349211,
   "repeat": {
     "beta": 10,
     "delta": 1.0,
@@ -45,5 +62,12 @@
     "threshold": "none",
     "unit": "n_days"
   },
-  "repeat_select": 0.44992849999999995
+  "repeat_select": 0.456632,
+  "slot": {
+    "agg": "airings",
+    "daytype": "we2",
+    "half_life": 8,
+    "model": "slot"
+  },
+  "slot_select": 0.4048095238095236
 }

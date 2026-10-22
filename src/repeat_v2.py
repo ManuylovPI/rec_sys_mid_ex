@@ -142,7 +142,7 @@ def main() -> None:
         t = time.time()
         preds = fill(combine(own, extra, users_all), users_all, st.fallback)
         res = evaluate(preds, data)
-        log_results(method, params, res, time.time() - t, f"fallback=popularity_n_weeks={POP_N}; selection=mean(n_days,n_airings)" + (f"; {notes}" if notes else ""))
+        log_results(method, params, res, time.time() - t, f"fallback=popularity_n_weeks={POP_N}; selection={'+'.join(SELECT_DEFS)}" + (f"; {notes}" if notes else ""))
         rows.append({"method": method, "params": params, "select": selection_score(res),
                      **{f"{p}/{d}": v[1] for (p, d), v in res.items()}})
         print(f"{method} {params}: select={rows[-1]['select']:.4f}", flush=True)

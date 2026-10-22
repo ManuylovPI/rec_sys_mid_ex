@@ -53,11 +53,12 @@ from sklearn.preprocessing import normalize  # noqa: E402
 from src.als import AlsData  # noqa: E402
 from src.cbf import item_matrix, show_tokens  # noqa: E402
 from src.data import PROCESSED, ROOT, SEED  # noqa: E402
-from src.evaluation import (EXPERIMENTS, FINAL_HIST_WEEKS, HIST_WEEKS, TARGET_WEEKS, TEST_WEEKS, evaluate,  # noqa: E402
+from src.evaluation import (EXPERIMENTS, SELECT_DEFS, FINAL_HIST_WEEKS, HIST_WEEKS, TARGET_WEEKS, TEST_WEEKS, evaluate,  # noqa: E402
                             fill, ground_truth, log_results, selection_score, test_users, validation_data, window)
 from src.metrics import K  # noqa: E402
 from src.method_utils import load_best, save_best  # noqa: E402
 from src.repeat_v2 import POP_N, Stats  # noqa: E402
+from src.slots import SlotModel, dropped_shows  # noqa: E402
 from src.submission import check_submission, write_submission  # noqa: E402
 
 OUT_MD = ROOT / "docs" / "hybrid_results.md"
@@ -71,7 +72,8 @@ TEMPORAL_TRAIN = ((11, 15), (16, 20))
 OBJECTIVES = ["binary", "lambdarank_log", "lambdarank_top5"]
 NUM_LEAVES = [15, 63]
 MIN_CHILD = [20, 100]
-CLEAR_MARGIN = 0.01  # "clearly beats repeat" on the selection score
+CLEAR_MARGIN = 0.01  # "clearly beats" margin on the selection score
+SLOT_FEATURES = ["slot_score", "slot_rank", "slot_hours", "repl_score", "s_no_view_hist"]
 
 
 def pq(name: str) -> str:
@@ -81,8 +83,9 @@ def pq(name: str) -> str:
 class Window:
     """Candidates and features for one (history window, target window)."""
 
-    def __init__(self, con, usw, hist_weeks, target_weeks, best):
+    def __init__(self, con, usw, hist_weeks, target_weeks, best, slots: bool = False):
         t0 = time.time()
+        self.slots = slots
         self.hw, self.tw = hist_weeks, target_weeks
         h0, h1 = hist_weeks
         t_0, t_1 = target_weeks
@@ -201,6 +204,23 @@ class Window:
         cr = st.channel_rows.groupby(["user_id", "tv_show_id"], as_index=False)["score"].max()
         cr["chan_rank"] = cr.groupby("user_id")["score"].rank(ascending=False, method="first")
         self.chan = cr.rename(columns={"score": "chan_score"})
+        watched = set(window(usw, hist_weeks)["tv_show_id"].unique().tolist())
+        self.shows["s_no_view_hist"] = (~self.shows.index.isin(list(watched))).astype(int)
+
+        # ---- slot habits (v2)
+        if slots:
+            sp_ = best["slot"]
+            sm = SlotModel(con, hist_weeks, target_weeks, sp_["daytype"], sp_["half_life"])
+            su = [int(u) for u in sm.users]
+            cols = np.flatnonzero(np.isin(sm.shows, self.pool))
+            self.slot_items = sm.shows[cols]
+            self.slot_pos = {u: i for i, u in enumerate(su)}
+            self.slot_air = sm.scores(su, "airings")[1][:, cols].astype(np.float32)
+            self.slot_hours = sm.scores(su, "hours")[1][:, cols].astype(np.float32)
+            self.slot_rank = ((-self.slot_air).argsort(axis=1).argsort(axis=1) + 1).astype(np.int32)
+            ru, rs = sm.replacement(su, dropped_shows(usw, hist_weeks, pd.Index(sm.shows)))
+            self.repl_pos = {int(u): i for i, u in enumerate(ru)}
+            self.repl = rs[:, cols].astype(np.float32)
         print(f"window {hist_weeks}->{target_weeks} built in {time.time() - t0:.1f} s", flush=True)
 
     # ------------------------------------------------------------------
@@ -219,6 +239,12 @@ class Window:
                                        "tv_show_id": self.als_items[top].ravel()}))
         ch = self.chan[(self.chan["chan_rank"] <= n) & self.chan["user_id"].isin(users)]
         parts.append(ch[["user_id", "tv_show_id"]])
+        if self.slots:
+            sk = [u for u in users if u in self.slot_pos]
+            if sk:
+                top = np.argpartition(-self.slot_air[[self.slot_pos[u] for u in sk]], n, axis=1)[:, :n]
+                parts.append(pd.DataFrame({"user_id": np.repeat(np.array(sk, dtype=np.uint64), n),
+                                           "tv_show_id": self.slot_items[top].ravel()}))
         c = pd.concat(parts).drop_duplicates()
         c["user_id"] = c["user_id"].astype("uint64")
         c["tv_show_id"] = c["tv_show_id"].astype("int64")
@@ -253,6 +279,17 @@ class Window:
         uh = self.user_hod.reindex(f["user_id"].to_numpy()).to_numpy()
         shh = self.show_hod.reindex(f["tv_show_id"].to_numpy()).to_numpy()
         f["tod_fit"] = np.nansum(uh * shh, axis=1)
+        if self.slots:
+            si = pd.Series(np.arange(len(self.slot_items)), index=self.slot_items).reindex(f["tv_show_id"]).fillna(-1).astype(int).to_numpy()
+            su = np.array([self.slot_pos.get(int(u), -1) for u in f["user_id"]])
+            ok = (su >= 0) & (si >= 0)
+            a, b = np.maximum(su, 0), np.maximum(si, 0)
+            f["slot_score"] = np.where(ok, self.slot_air[a, b], np.nan)
+            f["slot_hours"] = np.where(ok, self.slot_hours[a, b], np.nan)
+            f["slot_rank"] = np.where(ok, self.slot_rank[a, b], np.nan)
+            ru = np.array([self.repl_pos.get(int(u), -1) for u in f["user_id"]])
+            okr = (ru >= 0) & (si >= 0)
+            f["repl_score"] = np.where(okr, self.repl[np.maximum(ru, 0), b], 0.0) if len(self.repl) else 0.0
         return f
 
     def labels(self, usw: pd.DataFrame, cand: pd.DataFrame) -> pd.DataFrame:
@@ -275,6 +312,26 @@ FEATURES = ["u_sec_pw", "u_days_frac", "u_n_shows",
             "chan_score", "chan_rank", "tod_fit",
             "s_t_days_pw", "s_t_airings_pw", "s_hist_air_days_pw", "s_aired_in_hist", "s_pop_sec_pw", "s_pop_users",
             "s_pop_days_pw", "pop_rank", "s_category"]
+
+
+CFG = {"slots": False, "method": "hybrid_lgbm", "out_md": OUT_MD, "imp_md": IMP_MD, "sub": SUB, "key": "hybrid",
+       "features": FEATURES}
+
+
+def set_version(slots: bool) -> None:
+    """v1 = original hybrid; v2 (--slots) = slot-habit candidates and features."""
+    if slots:
+        CFG.update(slots=True, method="hybrid_lgbm_slots", out_md=ROOT / "docs" / "hybrid_v2_results.md",
+                   imp_md=ROOT / "docs" / "hybrid_v2_feature_importance.md", sub=ROOT / "submissions" / "hybrid_v2.csv",
+                   key="hybrid_v2", features=FEATURES + SLOT_FEATURES)
+
+
+def v1_reference() -> tuple[float, float]:
+    """Best n_days MAP@5 of hybrid v1 on test users: (main grid, temporal check), from experiments.csv."""
+    e = pd.read_csv(EXPERIMENTS)
+    e = e[(e["method"] == "hybrid_lgbm") & e["notes"].str.contains("target=n_days; population=test_users", regex=False)]
+    temporal = e["notes"].str.contains("temporal check", regex=False)
+    return float(e.loc[~temporal, "val_map5"].max()), float(e.loc[temporal, "val_map5"].max())
 
 
 def train(df: pd.DataFrame, objective: str, num_leaves: int, min_child: int, n_estimators: int | None = None):
@@ -300,19 +357,19 @@ def train(df: pd.DataFrame, objective: str, num_leaves: int, min_child: int, n_e
         model = lgb.LGBMRanker(objective="lambdarank", **common)
         fit_kw = {"group": tr.groupby("user_id", sort=False).size().to_numpy()}
     if n_estimators is None:
-        fit_kw["eval_set"] = [(va[FEATURES], va[label])]
+        fit_kw["eval_set"] = [(va[CFG["features"]], va[label])]
         fit_kw["callbacks"] = [lgb.early_stopping(100, verbose=False)]
         if objective != "binary":
             fit_kw["eval_group"] = [va.groupby("user_id", sort=False).size().to_numpy()]
             fit_kw["eval_at"] = [K]
-    model.fit(tr[FEATURES], tr[label], categorical_feature=cat, **fit_kw)
+    model.fit(tr[CFG["features"]], tr[label], categorical_feature=cat, **fit_kw)
     return model
 
 
 def score(model, f: pd.DataFrame) -> np.ndarray:
     if isinstance(model, lgb.LGBMClassifier):
-        return model.predict_proba(f[FEATURES])[:, 1]
-    return model.predict(f[FEATURES])
+        return model.predict_proba(f[CFG["features"]])[:, 1]
+    return model.predict(f[CFG["features"]])
 
 
 def top5(f: pd.DataFrame, s: np.ndarray) -> dict[int, list[int]]:
@@ -328,34 +385,50 @@ def component_rows() -> dict[str, dict]:
     e = pd.read_csv(EXPERIMENTS)
     e = e[e["notes"].str.contains("population=test_users", regex=False)]
     out = {}
-    for name, method, params in [("popularity", "popularity", {"n_weeks": POP_N}), ("repeat", "repeat_v2", best["repeat"]),
-                                 ("als", "als", best["als"]), ("cbf", "cbf", best["cbf"])]:
+    comps = [("popularity", "popularity", {"n_weeks": POP_N}), ("repeat", "repeat_v2", best["repeat"]),
+             ("als", "als", best["als"]), ("cbf", "cbf", best["cbf"])]
+    if "slot" in best:
+        comps.append(("slot habits", "slot", best["slot"]))
+    for name, method, params in comps:
         sub = e[(e["method"] == method) & (e["params_json"] == json.dumps(params, sort_keys=True))]
         sub = sub.drop_duplicates("notes", keep="last")
         vals = {n.split(";")[0].removeprefix("target="): v for n, v in zip(sub["notes"], sub["val_map5"])}
         out[name] = {"n_days": vals["n_days"], "n_airings": vals["n_airings"], "watch_sec": vals["watch_sec"],
-                     "select": (vals["n_days"] + vals["n_airings"]) / 2}
+                     "select": sum(vals[d] for d in SELECT_DEFS) / len(SELECT_DEFS)}
     return out
+
+
+def best_logged(method: str, temporal: bool) -> dict:
+    """Test-user scores of the logged config of `method` with the best n_days score (main grid or temporal check)."""
+    e = pd.read_csv(EXPERIMENTS)
+    e = e[(e["method"] == method) & e["notes"].str.contains("population=test_users", regex=False)]
+    e = e[e["notes"].str.contains("temporal check", regex=False) == temporal]
+    e = e.assign(target=e["notes"].str.split(";").str[0].str.removeprefix("target="))
+    wide = e.drop_duplicates(["params_json", "target"], keep="last").pivot(index="params_json", columns="target", values="val_map5")
+    r = wide.sort_values("n_days", ascending=False).iloc[0]
+    return {"select": sum(r[d] for d in SELECT_DEFS) / len(SELECT_DEFS), "n_days": r["n_days"],
+            "n_airings": r["n_airings"], "watch_sec": r["watch_sec"]}
 
 
 def write_final(con, data, best, p: dict, val: "Window", all_users: list[int]) -> str:
     """Train on weeks 11-20 -> 21-30 with all users and p['n_trees'] trees, predict weeks 31-42, write + check."""
     users = test_users()
-    fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best)
+    fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best, slots=CFG["slots"])
     cand_all = val.candidates(all_users)
     f_all = val.features(cand_all).merge(val.labels(data.usw, cand_all), on=["user_id", "tv_show_id"])
     model = train(f_all, p["objective"], p["num_leaves"], p["min_child_samples"], n_estimators=p["n_trees"])
     f_fin = fin.features(fin.candidates(users))
     preds = fill(top5(f_fin, score(model, f_fin)), users, fin.st.fallback)
-    write_submission(preds, users, SUB)
-    problems = check_submission(SUB, set(int(x) for x in fin.pool))
+    sub = CFG["sub"]
+    write_submission(preds, users, sub)
+    problems = check_submission(sub, set(int(x) for x in fin.pool))
     log = ROOT / "submissions" / "LOG.md"
-    kept = [ln for ln in log.read_text(encoding="utf-8").splitlines() if not ln.startswith(f"| {SUB.name} |")]
-    kept.append(f"| {SUB.name} | hybrid LightGBM re-ranker {p}; trained weeks 11-20 -> 21-30 on all users with "
+    kept = [ln for ln in log.read_text(encoding="utf-8").splitlines() if not ln.startswith(f"| {sub.name} |")]
+    kept.append(f"| {sub.name} | hybrid LightGBM re-ranker{' with slot features' if CFG['slots'] else ''} {p}; trained weeks 11-20 -> 21-30 on all users with "
                 f"{p['n_trees']} trees; features weeks 11-30, pool = labelled shows airing weeks 31-42 | "
                 f"{dt.date.today().isoformat()} |  |  |  |")
     log.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    note = f"{SUB.name}: format {'OK' if not problems else problems}"
+    note = f"{sub.name}: format {'OK' if not problems else problems}"
     print(note, flush=True)
     return note
 
@@ -366,15 +439,16 @@ def final_only() -> None:
     con = connect()
     best = load_best()
     data = validation_data()
-    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best)
+    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"])
     all_users = sorted(set(val.hist["user_id"].tolist()) | set(data.populations["test_users"]))
-    note = write_final(con, data, best, best["hybrid_final"], val, all_users)
-    with open(OUT_MD, "a", encoding="utf-8") as fh:
+    note = write_final(con, data, best, best[CFG["key"] + "_final"], val, all_users)
+    with open(CFG["out_md"], "a", encoding="utf-8") as fh:
         fh.write(f"\nRegenerated {dt.datetime.now():%Y-%m-%d %H:%M} with `python -m src.hybrid --final-only` using "
-                 f"`{best['hybrid_final']}` (objective with the best temporal check): {note}.\n")
+                 f"`{best[CFG['key'] + '_final']}` (objective with the best temporal check): {note}.\n")
 
 
 def main() -> None:
+    set_version("--slots" in sys.argv)
     if "--final-only" in sys.argv:
         final_only()
         return
@@ -387,7 +461,7 @@ def main() -> None:
     test_set = set(test)
     data_test = dataclasses.replace(data, populations={"test_users": test})
 
-    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best)
+    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"])
     all_users = sorted(set(val.hist["user_id"].tolist()) | test_set)
     train_users = [u for u in all_users if u not in test_set]
 
@@ -416,8 +490,8 @@ def main() -> None:
         res = evaluate(preds, data_test)
         p = {"objective": obj, "num_leaves": nl, "min_child_samples": mc, "n_trees": int(model.best_iteration_ or model.n_estimators),
              "n_cand": N_CAND, "train": "weeks 11-20 -> 21-30, non-test users"}
-        log_results("hybrid_lgbm", p, res, time.time() - t,
-                    f"fallback=popularity_n_weeks={POP_N}; selection=mean(n_days,n_airings); trained on non-test users")
+        log_results(CFG["method"], p, res, time.time() - t,
+                    f"fallback=popularity_n_weeks={POP_N}; selection={'+'.join(SELECT_DEFS)}; trained on non-test users")
         rows.append({"params": p, "select": selection_score(res), **{d: v[1] for (_, d), v in res.items()}})
         models[json.dumps(p, sort_keys=True)] = model
         print(f"hybrid {p}: select={rows[-1]['select']:.4f}", flush=True)
@@ -425,7 +499,7 @@ def main() -> None:
     best_model = models[json.dumps(best_row["params"], sort_keys=True)]
 
     # ---- temporal check: train on 11-15 -> 16-20, evaluate on the same validation
-    early = Window(con, data.usw, *TEMPORAL_TRAIN, best)
+    early = Window(con, data.usw, *TEMPORAL_TRAIN, best, slots=CFG["slots"])
     early_users = [u for u in sorted(set(early.hist["user_id"].tolist())) if u not in test_set]
     cand_e = early.candidates(early_users)
     f_e = early.features(cand_e).merge(early.labels(data.usw, cand_e), on=["user_id", "tv_show_id"])
@@ -438,44 +512,52 @@ def main() -> None:
         res = evaluate(preds, data_test)
         p = {**r["params"], "n_trees": int(model.best_iteration_ or model.n_estimators),
              "train": "weeks 11-15 -> 16-20, non-test users"}
-        log_results("hybrid_lgbm", p, res, time.time() - t,
-                    f"fallback=popularity_n_weeks={POP_N}; selection=mean(n_days,n_airings); temporal check")
+        log_results(CFG["method"], p, res, time.time() - t,
+                    f"fallback=popularity_n_weeks={POP_N}; selection={'+'.join(SELECT_DEFS)}; temporal check")
         temporal_rows.append({"params": p, "select": selection_score(res), **{d: v[1] for (_, d), v in res.items()}})
         print(f"temporal {p}: select={temporal_rows[-1]['select']:.4f}", flush=True)
 
     # ---- feature importance
-    imp = pd.DataFrame({"feature": FEATURES, "gain": best_model.booster_.feature_importance("gain"),
+    imp = pd.DataFrame({"feature": CFG["features"], "gain": best_model.booster_.feature_importance("gain"),
                         "splits": best_model.booster_.feature_importance("split")})
     imp["gain_share"] = imp["gain"] / imp["gain"].sum()
     imp = imp.sort_values("gain", ascending=False)
-    IMP_MD.write_text("\n".join(
+    CFG["imp_md"].write_text("\n".join(
         ["# Hybrid re-ranker: feature importance", "",
-         f"Produced by `python -m src.hybrid` on {dt.datetime.now():%Y-%m-%d %H:%M}. Model: `{best_row['params']}`.", "",
+         f"Produced by `python -m src.hybrid{' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Model: `{best_row['params']}`.", "",
          "| feature | gain share | splits |", "|---|---|---|"]
         + [f"| {r.feature} | {r.gain_share:.4f} | {r.splits} |" for r in imp.itertuples()]) + "\n", encoding="utf-8")
 
     comp = component_rows()
     repeat_sel = comp["repeat"]["select"]
     best_temporal = max(temporal_rows, key=lambda r: r["select"])
-    clear = best_row["select"] >= repeat_sel + CLEAR_MARGIN and best_temporal["select"] > repeat_sel
-    save_best("hybrid", best_row["params"])
-    save_best("hybrid_select", best_row["select"])
+    if CFG["slots"]:  # must beat hybrid v1 by the margin in both the main run and the temporal check
+        ref_main, ref_temporal = v1_reference()
+        clear = best_row["select"] >= ref_main + CLEAR_MARGIN and best_temporal["select"] >= ref_temporal + CLEAR_MARGIN
+        clear_rule = (f">= v1 + {CLEAR_MARGIN} on n_days in both runs (v1 main {ref_main:.4f}, v1 temporal "
+                      f"{ref_temporal:.4f})")
+    else:
+        clear = best_row["select"] >= repeat_sel + CLEAR_MARGIN and best_temporal["select"] > repeat_sel
+        clear_rule = f">= repeat + {CLEAR_MARGIN} and temporal check above repeat"
+    save_best(CFG["key"], best_row["params"])
+    save_best(CFG["key"] + "_select", best_row["select"])
 
     # ---- final: the main-grid config of the objective whose temporal check scored best
     final_obj = best_temporal["params"]["objective"]
     final_params = max((r for r in rows if r["params"]["objective"] == final_obj), key=lambda r: r["select"])["params"]
-    save_best("hybrid_final", final_params)
+    save_best(CFG["key"] + "_final", final_params)
     sub_note = write_final(con, data, best, final_params, val, all_users) if clear else "not written"
 
     # ---- reports
     def fmt_row(name, r):
         return f"| {name} | {r['select']:.4f} | {r['n_days']:.4f} | {r['n_airings']:.4f} | {r['watch_sec']:.4f} |"
 
-    lines = ["# Hybrid: candidate generation + LightGBM re-ranker", "",
-             f"Produced by `python -m src.hybrid` on {dt.datetime.now():%Y-%m-%d %H:%M}. Validation on the "
+    lines = [f"# Hybrid{' v2 (slot habits)' if CFG['slots'] else ''}: candidate generation + LightGBM re-ranker", "",
+             f"Produced by `python -m src.hybrid{' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Validation on the "
              f"{len(test)} test users (history weeks 11-20, target weeks 21-30, same pool and fallback as all methods). "
              f"Re-ranker trained on {len(train_users)} non-test users ({len(f_tr)} candidate rows). "
-             f"Candidates: top-{N_CAND} of repeat, popularity, ALS and channel lists ({len(f_test) / len(test):.1f} "
+             f"Candidates: top-{N_CAND} of repeat, popularity, ALS, channel{', slot' if CFG['slots'] else ''} lists "
+             f"({len(f_test) / len(test):.1f} "
              "per test user).", "",
              "## Candidate recall (days target, test users)", "",
              "| top-N per source | candidates per user | recall of target top-5 |", "|---|---|---|"]
@@ -488,21 +570,26 @@ def main() -> None:
     lines += [f"| `{r['params']}` | {r['select']:.4f} | {r['n_days']:.4f} | {r['n_airings']:.4f} | {r['watch_sec']:.4f} |"
               for r in temporal_rows]
     lines += ["", f"Selected: `{best_row['params']}` (select {best_row['select']:.4f}); repeat {repeat_sel:.4f}. "
-              f"Clearly beats repeat (>= +{CLEAR_MARGIN} and temporal check above repeat): {clear}. Final config "
+              f"Clearly better ({clear_rule}): {clear}. Final config "
               f"(objective with the best temporal check): `{final_params}`. Submission: {sub_note}.",
               "", f"Total runtime: {time.time() - t_all:.1f} s."]
-    OUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    CFG["out_md"].write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     section = ["## Hybrid vs components (test users)", "",
                f"Produced by `python -m src.hybrid`. Components from experiments.csv; hybrid = best re-ranker "
                "(trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).", "",
                "| method | select | n_days | n_airings | watch_sec |", "|---|---|---|---|---|"]
     section += [fmt_row(k, v) for k, v in comp.items()]
-    section += [fmt_row("hybrid (LightGBM re-ranker)", best_row), fmt_row("hybrid, temporal check", best_temporal)]
+    if CFG["slots"]:
+        section += [fmt_row("hybrid v1", best_logged("hybrid_lgbm", False)),
+                    fmt_row("hybrid v1, temporal check", best_logged("hybrid_lgbm", True)),
+                    fmt_row("hybrid v2 (+ slot habits)", best_row), fmt_row("hybrid v2, temporal check", best_temporal)]
+    else:
+        section += [fmt_row("hybrid (LightGBM re-ranker)", best_row), fmt_row("hybrid, temporal check", best_temporal)]
     text = METHODS_MD.read_text(encoding="utf-8")
     text = text.split("## Hybrid vs components")[0].rstrip() + "\n\n" + "\n".join(section) + "\n"
     METHODS_MD.write_text(text, encoding="utf-8")
-    print(f"wrote {OUT_MD}, {IMP_MD}, {METHODS_MD}; total {time.time() - t_all:.1f} s")
+    print(f"wrote {CFG['out_md']}, {CFG['imp_md']}, {METHODS_MD}; total {time.time() - t_all:.1f} s")
 
 
 if __name__ == "__main__":

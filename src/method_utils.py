@@ -3,7 +3,7 @@ import json
 import time
 
 from src.data import ROOT, connect
-from src.evaluation import HIST_WEEKS, TARGET_WEEKS, evaluate, fill, log_results, selection_score, validation_data
+from src.evaluation import HIST_WEEKS, SELECT_DEFS, TARGET_WEEKS, evaluate, fill, log_results, selection_score, validation_data
 from src.repeat_v2 import POP_N, Stats
 
 BEST_PARAMS = ROOT / "docs" / "best_params.json"
@@ -24,7 +24,7 @@ class Context:
         preds = fill(ranked, self.users, self.st.fallback)
         res = evaluate(preds, self.data)
         log_results(method, params, res, time.time() - t_start,
-                    f"fallback=popularity_n_weeks={POP_N}; selection=mean(n_days,n_airings)" + (f"; {notes}" if notes else ""))
+                    f"fallback=popularity_n_weeks={POP_N}; selection={'+'.join(SELECT_DEFS)}" + (f"; {notes}" if notes else ""))
         row = {"method": method, "params": params, "select": selection_score(res),
                **{f"{p}/{d}": v[1] for (p, d), v in res.items()}}
         self.rows.append(row)

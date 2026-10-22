@@ -96,7 +96,11 @@ def main() -> None:
               "## Selected parameters", ""]
     lines += [f"- {r['method']}: `{r['params']}`" for r in rows]
     lines += ["", f"Total runtime: {time.time() - t_all:.1f} s."]
-    OUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # keep sections written by later stages (e.g. src.hybrid's "Hybrid vs components")
+    tail = ""
+    if OUT_MD.exists() and "\n## Hybrid vs components" in OUT_MD.read_text(encoding="utf-8"):
+        tail = "\n## Hybrid vs components" + OUT_MD.read_text(encoding="utf-8").split("\n## Hybrid vs components", 1)[1]
+    OUT_MD.write_text("\n".join(lines) + "\n" + tail, encoding="utf-8")
     print(f"wrote {OUT_MD}")
 
 
