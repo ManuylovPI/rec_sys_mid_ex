@@ -39,18 +39,16 @@ Total runtime: 7.9 s.
 
 ## Hybrid vs components (test users)
 
-Produced by `python -m src.hybrid --coverage`. Components from experiments.csv (rows on the fixed data where available, docs/errata.md); hybrid = best re-ranker (trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).
+Produced by `python -m src.hybrid --cov-target`. Components from experiments.csv (rows on the fixed data where available, docs/errata.md); hybrid = best re-ranker (trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).
 
-| method | select | n_days | n_airings | watch_sec |
-|---|---|---|---|---|
-| popularity | 0.3167 | 0.3167 | 0.3100 | 0.1799 |
-| repeat | 0.4535 | 0.4535 | 0.4422 | 0.2940 |
-| als | 0.2927 | 0.2927 | 0.2911 | 0.1818 |
-| cbf | 0.1276 | 0.1276 | 0.1265 | 0.0882 |
-| slot habits | 0.4041 | 0.4041 | 0.4240 | 0.2637 |
-| hybrid v2 (+ slot habits), before tz fix | 0.4756 | 0.4756 | 0.4628 | 0.3021 |
-| hybrid v2, temporal check, before tz fix | 0.4698 | 0.4698 | 0.4606 | 0.2945 |
-| hybrid v2 (+ slot habits), fixed data | 0.4748 | 0.4748 | 0.4639 | 0.3050 |
-| hybrid v2, temporal check, fixed data | 0.4651 | 0.4651 | 0.4582 | 0.2939 |
-| hybrid v3 (+ coverage, schedule change, channel) | 0.4762 | 0.4762 | 0.4650 | 0.3047 |
-| hybrid v3, temporal check | 0.4620 | 0.4620 | 0.4548 | 0.2965 |
+| method | select | cov50 | n_days | n_airings | watch_sec |
+|---|---|---|---|---|---|
+| popularity | 0.2752 | 0.2752 | 0.3167 | 0.3100 | 0.1799 |
+| repeat (loyalty, tuned on n_days) | 0.3602 | 0.3602 | 0.4535 | 0.4422 | 0.2940 |
+| als | 0.2528 | 0.2528 | 0.2927 | 0.2911 | 0.1818 |
+| cbf | 0.1154 | 0.1154 | 0.1276 | 0.1265 | 0.0882 |
+| slot habits | 0.4015 | 0.4015 | 0.4041 | 0.4240 | 0.2637 |
+| repeat_cont50 (write-up Algorithm 1) | 0.3841 | 0.3841 | 0.3690 | 0.3888 | 0.2493 |
+| repeat_cov (re-tuned on cov50) | 0.4080 | 0.4080 | 0.4020 | 0.4233 | 0.2680 |
+| hybrid on cov50 labels (re-ranker) | 0.4271 | 0.4271 | 0.4226 | 0.4433 | 0.2674 |
+| hybrid on cov50 labels, temporal check | 0.4161 | 0.4161 | 0.4238 | 0.4385 | 0.2626 |

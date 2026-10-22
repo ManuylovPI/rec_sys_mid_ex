@@ -1,8 +1,8 @@
 # Continuous-view coverage of labelled airings
 
-Generated 2026-10-22 17:15:43 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
+Generated 2026-10-22 17:28:52 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
 
-Produced by `python -m src.coverage`. Build time 3.1 s.
+Produced by `python -m src.coverage`. Build time 3.1 s (merged), 3.6 s (raw views).
 
 ## Counts
 
@@ -19,3 +19,13 @@ Produced by `python -m src.coverage`. Build time 3.1 s.
 | 0.7 | 660998 | 708972 |
 | 0.8 | 573725 | 611760 |
 | 0.9 | 496475 | 521370 |
+
+## Merged continuous intervals vs raw single views: pairs reaching each threshold
+
+Strict > as in the write-up's 'more than 50%'.
+
+| threshold | merged_gt | raw_gt |
+|---|---|---|
+| 0.3 | 1201183 | 1193278 |
+| 0.5 | 878863 | 869879 |
+| 0.8 | 573399 | 562606 |

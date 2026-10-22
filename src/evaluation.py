@@ -63,6 +63,18 @@ def ground_truth(usw: pd.DataFrame, weeks: tuple[int, int], pool: pd.Index, by: 
     return top_k_lists(agg, [by, "watch_sec"])
 
 
+def cov_ground_truth(weeks: tuple[int, int], pool: pd.Index, usw: pd.DataFrame, cut: float = 0.5) -> dict[int, list[int]]:
+    """cov50-style target: top-K shows by number of airings with ONE merged continuous view covering more than
+    `cut` of the airing (src.coverage), ties by overlap seconds then tv_show_id."""
+    t = connect().sql(f"""
+        SELECT user_id, tv_show_id, count(*) AS cov FROM '{(PROCESSED / 'coverage.parquet').as_posix()}'
+        WHERE week BETWEEN {weeks[0]} AND {weeks[1]} AND cont_frac > {cut} GROUP BY ALL""").df()
+    t = t[t["tv_show_id"].isin(pool)]
+    sec = window(usw, weeks).groupby(["user_id", "tv_show_id"], as_index=False)["watch_sec"].sum()
+    t = t.merge(sec, on=["user_id", "tv_show_id"], how="left").fillna({"watch_sec": 0})
+    return top_k_lists(t, ["cov", "watch_sec"])
+
+
 def top_k_lists(df: pd.DataFrame, score_cols: list[str], k: int = K) -> dict[int, list[int]]:
     """Per user, the k highest-scoring tv_show_ids (score desc, tv_show_id asc for ties)."""
     s = df.sort_values(["user_id", *score_cols, "tv_show_id"],
@@ -98,7 +110,8 @@ class ValData:
 def validation_data() -> ValData:
     usw = load_usw()
     pool = pool_airtime(TARGET_WEEKS)
-    gts = {d: ground_truth(usw, TARGET_WEEKS, pool.index, d) for d in TARGET_DEFS}
+    gts = {"cov50": cov_ground_truth(TARGET_WEEKS, pool.index, usw),
+           **{d: ground_truth(usw, TARGET_WEEKS, pool.index, d) for d in TARGET_DEFS}}
     hist_users = set(window(usw, HIST_WEEKS)["user_id"].tolist())
     both = sorted(u for u in gts["watch_sec"] if u in hist_users)
     return ValData(usw, pool, gts, {"test_users": test_users(), "active_both": both})
@@ -126,12 +139,13 @@ def log_results(method: str, params: dict, res: dict, runtime: float, extra_note
                         f"{runtime:.2f}", notes])
 
 
-SELECT_DEFS = ("n_days",)
+SELECT_DEFS = ("cov50",)
 
 
 def selection_score(res: dict) -> float:
-    """Model selection criterion: MAP@5 of the n_days target on the test users.
+    """Model selection criterion: MAP@5 of the cov50 target on the test users.
 
-    History: stage 2 used the mean over all three targets, stages 3-5 the mean of n_days and n_airings; n_days
-    only from stage 7 on, after the target-definition study (docs/target_definition.md)."""
+    History: stage 2 used the mean over all three any-overlap targets, stages 3-5 the mean of n_days and n_airings,
+    stages 7-9 n_days, and cov50 (one continuous view covering > 50% of the airing, counted as airings) from
+    stage 10 on, after the four-point target study (docs/target_definition.md)."""
     return sum(res[("test_users", d)][1] for d in SELECT_DEFS) / len(SELECT_DEFS)

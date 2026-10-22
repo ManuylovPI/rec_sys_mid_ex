@@ -53,7 +53,7 @@ from sklearn.preprocessing import normalize  # noqa: E402
 from src.als import AlsData  # noqa: E402
 from src.cbf import item_matrix, show_tokens  # noqa: E402
 from src.data import PROCESSED, ROOT, SEED  # noqa: E402
-from src.evaluation import (EXPERIMENTS, SELECT_DEFS, FINAL_HIST_WEEKS, HIST_WEEKS, TARGET_WEEKS, TEST_WEEKS, evaluate,  # noqa: E402
+from src.evaluation import (EXPERIMENTS, SELECT_DEFS, cov_ground_truth, FINAL_HIST_WEEKS, HIST_WEEKS, TARGET_WEEKS, TEST_WEEKS, evaluate,  # noqa: E402
                             fill, ground_truth, log_results, selection_score, test_users, validation_data, window)
 from src.metrics import K  # noqa: E402
 from src.method_utils import load_best, save_best  # noqa: E402
@@ -77,6 +77,7 @@ SLOT_FEATURES = ["slot_score", "slot_rank", "slot_hours", "repl_score", "s_no_vi
 COV_FEATURES = ["cov30", "cov50", "cov80", "cov80_rank", "cov80_share", "s_sched_ratio_airings", "s_sched_ratio_days",
                 "s_channel"]
 CATEGORICAL = ["s_category", "s_channel"]
+COV50_FEATURES = ["cov30_rank", "cov50_rank", "rc_score", "rc_rank"]
 
 
 def pq(name: str) -> str:
@@ -86,10 +87,13 @@ def pq(name: str) -> str:
 class Window:
     """Candidates and features for one (history window, target window)."""
 
-    def __init__(self, con, usw, hist_weeks, target_weeks, best, slots: bool = False, coverage: bool = False):
+    def __init__(self, con, usw, hist_weeks, target_weeks, best, slots: bool = False, coverage: bool = False,
+                 cov_target: bool = False):
         t0 = time.time()
         self.slots = slots
-        self.coverage = coverage
+        self.coverage = coverage or cov_target
+        self.cov_target = cov_target
+        self.usw = usw
         self.hw, self.tw = hist_weeks, target_weeks
         h0, h1 = hist_weeks
         t_0, t_1 = target_weeks
@@ -219,17 +223,29 @@ class Window:
         self.shows["s_no_view_hist"] = (~self.shows.index.isin(list(watched))).astype(int)
 
         # ---- continuous-view coverage counts (coverage version)
-        if coverage:
+        if self.coverage:
+            op = ">" if cov_target else ">="  # cov50 version: strict, as in the target definition
             c = con.sql(f"""
                 SELECT user_id, tv_show_id, week,
-                       count(*) FILTER (WHERE cont_frac >= 0.3) AS c30, count(*) FILTER (WHERE cont_frac >= 0.5) AS c50,
-                       count(*) FILTER (WHERE cont_frac >= 0.8) AS c80
+                       count(*) FILTER (WHERE cont_frac {op} 0.3) AS c30, count(*) FILTER (WHERE cont_frac {op} 0.5) AS c50,
+                       count(*) FILTER (WHERE cont_frac {op} 0.8) AS c80
                 FROM '{pq('coverage')}' WHERE week BETWEEN {h0} AND {h1} GROUP BY ALL""").df()
             dw = 0.5 ** ((h1 - c["week"]) / HL) / dnorm
             cov = c[["user_id", "tv_show_id"]].assign(cov30=c["c30"] * dw, cov50=c["c50"] * dw, cov80=c["c80"] * dw) \
                 .groupby(["user_id", "tv_show_id"], as_index=False)[["cov30", "cov50", "cov80"]].sum()
-            cov["cov80_rank"] = cov.groupby("user_id")["cov80"].rank(ascending=False, method="first")
+            for k in (30, 50, 80):
+                cov[f"cov{k}_rank"] = cov.groupby("user_id")[f"cov{k}"].rank(ascending=False, method="first")
             self.cov = cov
+
+        # ---- repeat on the cov50 target (cov_target version): candidates, score and rank
+        if cov_target:
+            from src.repeat_v3 import CovCounts
+            self.cc = CovCounts(con, usw, st, hist_weeks)
+            self.rc_params = best["repeat_cov"]
+            rc = self.cc.scores({**self.rc_params, "min_count": 1})[["user_id", "tv_show_id", "score"]]
+            rc["rc_rank"] = rc.groupby("user_id")["score"].rank(ascending=False, method="first")
+            self.rc = rc.rename(columns={"score": "rc_score"})
+            self._rc_lists = {}
 
         # ---- slot habits (v2)
         if slots:
@@ -250,8 +266,15 @@ class Window:
     # ------------------------------------------------------------------
     def candidates(self, users: list[int], n: int = N_CAND) -> pd.DataFrame:
         parts = []
-        rep = self.hist[self.hist["rep_rank"] <= n]
-        parts.append(rep[rep["user_id"].isin(users)][["user_id", "tv_show_id"]])
+        if self.cov_target:  # candidates: repeat_cov, popularity, ALS, slots
+            if n not in self._rc_lists:
+                self._rc_lists[n] = self.cc.ranked(self.rc_params, k=n)
+            lists = self._rc_lists[n]
+            pairs = [(u, x) for u in users for x in lists.get(u, [])]
+            parts.append(pd.DataFrame(pairs, columns=["user_id", "tv_show_id"]).astype({"user_id": "uint64"}))
+        else:
+            rep = self.hist[self.hist["rep_rank"] <= n]
+            parts.append(rep[rep["user_id"].isin(users)][["user_id", "tv_show_id"]])
         top_pop = self.pop_list[:n]
         uarr = np.array(users, dtype=np.uint64)
         parts.append(pd.DataFrame({"user_id": np.repeat(uarr, len(top_pop)), "tv_show_id": np.tile(top_pop, len(users))}))
@@ -261,8 +284,9 @@ class Window:
             top = np.argpartition(-self.als_scores[rows], n, axis=1)[:, :n]
             parts.append(pd.DataFrame({"user_id": np.repeat(np.array(known, dtype=np.uint64), n),
                                        "tv_show_id": self.als_items[top].ravel()}))
-        ch = self.chan[(self.chan["chan_rank"] <= n) & self.chan["user_id"].isin(users)]
-        parts.append(ch[["user_id", "tv_show_id"]])
+        if not self.cov_target:
+            ch = self.chan[(self.chan["chan_rank"] <= n) & self.chan["user_id"].isin(users)]
+            parts.append(ch[["user_id", "tv_show_id"]])
         if self.slots:
             sk = [u for u in users if u in self.slot_pos]
             if sk:
@@ -303,6 +327,8 @@ class Window:
         uh = self.user_hod.reindex(f["user_id"].to_numpy()).to_numpy()
         shh = self.show_hod.reindex(f["tv_show_id"].to_numpy()).to_numpy()
         f["tod_fit"] = np.nansum(uh * shh, axis=1)
+        if self.cov_target:
+            f = f.merge(self.rc, on=["user_id", "tv_show_id"], how="left")
         if self.coverage:
             f = f.merge(self.cov, on=["user_id", "tv_show_id"], how="left")
             f[["cov30", "cov50", "cov80"]] = f[["cov30", "cov50", "cov80"]].fillna(0)
@@ -321,6 +347,8 @@ class Window:
         return f
 
     def labels(self, usw: pd.DataFrame, cand: pd.DataFrame) -> pd.DataFrame:
+        if self.cov_target:
+            return self.labels_cov(usw, cand)
         t = window(usw, self.tw)
         t = t[t["tv_show_id"].isin(self.pool)].groupby(["user_id", "tv_show_id"], as_index=False)["n_days"].sum()
         lab = cand.merge(t, on=["user_id", "tv_show_id"], how="left").fillna({"n_days": 0})
@@ -334,6 +362,23 @@ class Window:
         return lab
 
 
+    def labels_cov(self, usw: pd.DataFrame, cand: pd.DataFrame) -> pd.DataFrame:
+        """Labels from the cov50 target: airings with one continuous view covering > 50% in the target window."""
+        from src.data import connect
+        t = connect().sql(f"""
+            SELECT user_id, tv_show_id, count(*) AS cov FROM '{pq('coverage')}'
+            WHERE week BETWEEN {self.tw[0]} AND {self.tw[1]} AND cont_frac > 0.5 GROUP BY ALL""").df()
+        lab = cand.merge(t, on=["user_id", "tv_show_id"], how="left").fillna({"cov": 0})
+        gt = cov_ground_truth(self.tw, pd.Index(self.pool), usw)
+        rank = {(u, s): i for u, lst in gt.items() for i, s in enumerate(lst)}
+        r = np.array([rank.get((int(u), int(s)), -1) for u, s in zip(lab["user_id"], lab["tv_show_id"])])
+        lab["y_binary"] = (r >= 0).astype(int)
+        lab["y_top5"] = np.where(r >= 0, K - r, 0)
+        d = lab["cov"].to_numpy()
+        lab["y_log"] = np.where(d > 0, np.minimum(1 + np.floor(np.log2(np.maximum(d, 1))), 5), 0).astype(int)
+        return lab
+
+
 FEATURES = ["u_sec_pw", "u_days_frac", "u_n_shows",
             "h_d_days", "h_d_airings", "h_d_sec", "h_days_pw", "h_sec_pw", "h_weeks_since_last", "h_weeks_frac",
             "h_loyalty", "h_loyalty_score", "rep_rank", "als_score", "als_rank", "cbf_score", "ch_share",
@@ -342,14 +387,19 @@ FEATURES = ["u_sec_pw", "u_days_frac", "u_n_shows",
             "s_pop_days_pw", "pop_rank", "s_category"]
 
 
-CFG = {"slots": False, "coverage": False, "method": "hybrid_lgbm", "out_md": OUT_MD, "imp_md": IMP_MD, "sub": SUB, "key": "hybrid",
+CFG = {"slots": False, "coverage": False, "cov_target": False, "method": "hybrid_lgbm", "out_md": OUT_MD, "imp_md": IMP_MD, "sub": SUB, "key": "hybrid",
        "features": FEATURES}
 
 
-def set_version(slots: bool, coverage: bool = False) -> None:
+def set_version(slots: bool, coverage: bool = False, cov_target: bool = False) -> None:
     """v1 = original hybrid; v2 (--slots) = slot-habit candidates and features; --slots --coverage adds the
     continuous-coverage counts, schedule-change ratios and channel (written to hybrid_v2.csv if clearly better)."""
-    if coverage:
+    if cov_target:
+        CFG.update(slots=True, coverage=True, cov_target=True, method="hybrid_lgbm_cov50",
+                   out_md=ROOT / "docs" / "hybrid_cov50_results.md",
+                   imp_md=ROOT / "docs" / "hybrid_cov50_feature_importance.md", sub=ROOT / "submissions" / "hybrid_v2.csv",
+                   key="hybrid_cov50", features=FEATURES + SLOT_FEATURES + COV_FEATURES + COV50_FEATURES)
+    elif coverage:
         CFG.update(slots=True, coverage=True, method="hybrid_lgbm_cov", out_md=ROOT / "docs" / "hybrid_cov_results.md",
                    imp_md=ROOT / "docs" / "hybrid_cov_feature_importance.md", sub=ROOT / "submissions" / "hybrid_v2.csv",
                    key="hybrid_cov", features=FEATURES + SLOT_FEATURES + COV_FEATURES)
@@ -418,18 +468,23 @@ def component_rows() -> dict[str, dict]:
     e = pd.read_csv(EXPERIMENTS)
     e = e[e["notes"].str.contains("population=test_users", regex=False)]
     out = {}
-    comps = [("popularity", "popularity", {"n_weeks": POP_N}), ("repeat", "repeat_v2", best["repeat"]),
+    comps = [("popularity", "popularity", {"n_weeks": POP_N}), ("repeat (loyalty, tuned on n_days)", "repeat_v2", best["repeat"]),
              ("als", "als", best["als"]), ("cbf", "cbf", best["cbf"])]
     if "slot" in best:
         comps.append(("slot habits", "slot", best["slot"]))
+    if "repeat_cov" in best:
+        comps += [("repeat_cont50 (write-up Algorithm 1)", "repeat_cont",
+                   {"cut": 0.5, "tie": "pop", "history": "whole window, no decay"}),
+                  ("repeat_cov (re-tuned on cov50)", "repeat_cov", best["repeat_cov"])]
     for name, method, params in comps:
         sub = e[(e["method"] == method) & (e["params_json"] == json.dumps(params, sort_keys=True))]
         if sub["notes"].str.contains("data=tzfix", regex=False).any():  # prefer rows on the fixed data
             sub = sub[sub["notes"].str.contains("data=tzfix", regex=False)]
         sub = sub.assign(target=sub["notes"].str.split(";").str[0]).drop_duplicates("target", keep="last")
         vals = {n.split(";")[0].removeprefix("target="): v for n, v in zip(sub["notes"], sub["val_map5"])}
-        out[name] = {"n_days": vals["n_days"], "n_airings": vals["n_airings"], "watch_sec": vals["watch_sec"],
-                     "select": sum(vals[d] for d in SELECT_DEFS) / len(SELECT_DEFS)}
+        out[name] = {"cov50": vals.get("cov50", float("nan")), "n_days": vals["n_days"], "n_airings": vals["n_airings"],
+                     "watch_sec": vals["watch_sec"],
+                     "select": sum(vals.get(d, float("nan")) for d in SELECT_DEFS) / len(SELECT_DEFS)}
     return out
 
 
@@ -450,7 +505,8 @@ def best_logged(method: str, temporal: bool, post_fix: bool = True) -> dict:
 def write_final(con, data, best, p: dict, val: "Window", all_users: list[int]) -> str:
     """Train on weeks 11-20 -> 21-30 with all users and p['n_trees'] trees, predict weeks 31-42, write + check."""
     users = test_users()
-    fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"])
+    fin = Window(con, data.usw, FINAL_HIST_WEEKS, TEST_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"],
+                 cov_target=CFG["cov_target"])
     cand_all = val.candidates(all_users)
     f_all = val.features(cand_all).merge(val.labels(data.usw, cand_all), on=["user_id", "tv_show_id"])
     model = train(f_all, p["objective"], p["num_leaves"], p["min_child_samples"], n_estimators=p["n_trees"])
@@ -461,7 +517,7 @@ def write_final(con, data, best, p: dict, val: "Window", all_users: list[int]) -
     problems = check_submission(sub, set(int(x) for x in fin.pool))
     log = ROOT / "submissions" / "LOG.md"
     kept = [ln for ln in log.read_text(encoding="utf-8").splitlines() if not ln.startswith(f"| {sub.name} |")]
-    kept.append(f"| {sub.name} | hybrid LightGBM re-ranker{' with slot features' if CFG['slots'] else ''} {p}; trained weeks 11-20 -> 21-30 on all users with "
+    kept.append(f"| {sub.name} | hybrid LightGBM re-ranker{' on cov50 labels (repeat_cov, ALS, popularity, slot candidates)' if CFG['cov_target'] else ' with slot features' if CFG['slots'] else ''} {p}; trained weeks 11-20 -> 21-30 on all users with "
                 f"{p['n_trees']} trees; features weeks 11-30, pool = labelled shows airing weeks 31-42 | "
                 f"{dt.date.today().isoformat()} |  |  |  |")
     log.write_text("\n".join(kept) + "\n", encoding="utf-8")
@@ -476,7 +532,8 @@ def final_only() -> None:
     con = connect()
     best = load_best()
     data = validation_data()
-    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"])
+    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"],
+                 cov_target=CFG["cov_target"])
     all_users = sorted(set(val.hist["user_id"].tolist()) | set(data.populations["test_users"]))
     note = write_final(con, data, best, best[CFG["key"] + "_final"], val, all_users)
     with open(CFG["out_md"], "a", encoding="utf-8") as fh:
@@ -485,7 +542,7 @@ def final_only() -> None:
 
 
 def main() -> None:
-    set_version("--slots" in sys.argv or "--coverage" in sys.argv, "--coverage" in sys.argv)
+    set_version("--slots" in sys.argv or "--coverage" in sys.argv, "--coverage" in sys.argv, "--cov-target" in sys.argv)
     if "--final-only" in sys.argv:
         final_only()
         return
@@ -498,12 +555,13 @@ def main() -> None:
     test_set = set(test)
     data_test = dataclasses.replace(data, populations={"test_users": test})
 
-    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"])
+    val = Window(con, data.usw, HIST_WEEKS, TARGET_WEEKS, best, slots=CFG["slots"], coverage=CFG["coverage"],
+                 cov_target=CFG["cov_target"])
     all_users = sorted(set(val.hist["user_id"].tolist()) | test_set)
     train_users = [u for u in all_users if u not in test_set]
 
     # ---- candidate recall on the days target (test users)
-    gt = data.gts["n_days"]
+    gt = data.gts[SELECT_DEFS[0]]
     n_gt = sum(len(gt.get(u, [])) for u in test)
     recall_rows = []
     for n in RECALL_NS:
@@ -536,7 +594,8 @@ def main() -> None:
     best_model = models[json.dumps(best_row["params"], sort_keys=True)]
 
     # ---- temporal check: train on 11-15 -> 16-20, evaluate on the same validation
-    early = Window(con, data.usw, *TEMPORAL_TRAIN, best, slots=CFG["slots"], coverage=CFG["coverage"])
+    early = Window(con, data.usw, *TEMPORAL_TRAIN, best, slots=CFG["slots"], coverage=CFG["coverage"],
+                 cov_target=CFG["cov_target"])
     early_users = [u for u in sorted(set(early.hist["user_id"].tolist())) if u not in test_set]
     cand_e = early.candidates(early_users)
     f_e = early.features(cand_e).merge(early.labels(data.usw, cand_e), on=["user_id", "tv_show_id"])
@@ -561,14 +620,18 @@ def main() -> None:
     imp = imp.sort_values("gain", ascending=False)
     CFG["imp_md"].write_text("\n".join(
         ["# Hybrid re-ranker: feature importance", "",
-         f"Produced by `python -m src.hybrid{' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Model: `{best_row['params']}`.", "",
+         f"Produced by `python -m src.hybrid{' --cov-target' if CFG['cov_target'] else ' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Model: `{best_row['params']}`.", "",
          "| feature | gain share | splits |", "|---|---|---|"]
         + [f"| {r.feature} | {r.gain_share:.4f} | {r.splits} |" for r in imp.itertuples()]) + "\n", encoding="utf-8")
 
     comp = component_rows()
     repeat_sel = comp["repeat"]["select"]
     best_temporal = max(temporal_rows, key=lambda r: r["select"])
-    if CFG["coverage"]:  # must beat hybrid v2 re-run on the fixed data by the margin in both runs
+    if CFG["cov_target"]:  # must beat the best repeat on cov50 by the margin (main) and in the temporal check
+        ref = best["repeat_cov_select"]
+        clear = best_row["select"] >= ref + CLEAR_MARGIN and best_temporal["select"] > ref
+        clear_rule = f">= best repeat on cov50 + {CLEAR_MARGIN} and temporal check above it (repeat {ref:.4f})"
+    elif CFG["coverage"]:  # must beat hybrid v2 re-run on the fixed data by the margin in both runs
         r_main, r_temp = best_logged("hybrid_lgbm_slots", False), best_logged("hybrid_lgbm_slots", True)
         ref_main, ref_temporal = r_main["n_days"], r_temp["n_days"]
         clear = best_row["select"] >= ref_main + CLEAR_MARGIN and best_temporal["select"] >= ref_temporal + CLEAR_MARGIN
@@ -596,25 +659,27 @@ def main() -> None:
 
     # ---- reports
     def fmt_row(name, r):
-        return f"| {name} | {r['select']:.4f} | {r['n_days']:.4f} | {r['n_airings']:.4f} | {r['watch_sec']:.4f} |"
+        return (f"| {name} | {r['select']:.4f} | {r.get('cov50', float('nan')):.4f} | {r['n_days']:.4f} | "
+                f"{r['n_airings']:.4f} | {r['watch_sec']:.4f} |")
 
-    lines = [f"# Hybrid{' v3 (slot habits + coverage)' if CFG['coverage'] else ' v2 (slot habits)' if CFG['slots'] else ''}: candidate generation + LightGBM re-ranker", "",
-             f"Produced by `python -m src.hybrid{' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Validation on the "
+    lines = [f"# Hybrid{' on cov50 labels' if CFG['cov_target'] else ' v3 (slot habits + coverage)' if CFG['coverage'] else ' v2 (slot habits)' if CFG['slots'] else ''}: candidate generation + LightGBM re-ranker", "",
+             f"Produced by `python -m src.hybrid{' --cov-target' if CFG['cov_target'] else ' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}` on {dt.datetime.now():%Y-%m-%d %H:%M}. Validation on the "
              f"{len(test)} test users (history weeks 11-20, target weeks 21-30, same pool and fallback as all methods). "
              f"Re-ranker trained on {len(train_users)} non-test users ({len(f_tr)} candidate rows). "
-             f"Candidates: top-{N_CAND} of repeat, popularity, ALS, channel{', slot' if CFG['slots'] else ''} lists "
+             f"Candidates: top-{N_CAND} of " + ("repeat_cov, popularity, ALS, slot" if CFG['cov_target'] else
+             f"repeat, popularity, ALS, channel{', slot' if CFG['slots'] else ''}") + " lists "
              f"({len(f_test) / len(test):.1f} "
              "per test user).", "",
-             "## Candidate recall (days target, test users)", "",
+             f"## Candidate recall ({SELECT_DEFS[0]} target, test users)", "",
              "| top-N per source | candidates per user | recall of target top-5 |", "|---|---|---|"]
     lines += [f"| {n} | {c:.1f} | {r:.4f} |" for n, c, r in recall_rows]
-    lines += ["", "## Re-ranker grid", "", "| params | select | n_days | n_airings | watch_sec |", "|---|---|---|---|---|"]
-    lines += [f"| `{r['params']}` | {r['select']:.4f} | {r['n_days']:.4f} | {r['n_airings']:.4f} | {r['watch_sec']:.4f} |"
-              for r in sorted(rows, key=lambda r: -r["select"])]
+    lines += ["", "## Re-ranker grid", "", "| params | select | cov50 | n_days | n_airings | watch_sec |", "|---|---|---|---|---|---|"]
+    lines += [f"| `{r['params']}` | {r['select']:.4f} | {r.get('cov50', float('nan')):.4f} | {r['n_days']:.4f} | "
+              f"{r['n_airings']:.4f} | {r['watch_sec']:.4f} |" for r in sorted(rows, key=lambda r: -r["select"])]
     lines += ["", "## Temporal check (trained on weeks 11-15 -> 16-20, no label from weeks 21-30)", "",
-              "| params | select | n_days | n_airings | watch_sec |", "|---|---|---|---|---|"]
-    lines += [f"| `{r['params']}` | {r['select']:.4f} | {r['n_days']:.4f} | {r['n_airings']:.4f} | {r['watch_sec']:.4f} |"
-              for r in temporal_rows]
+              "| params | select | cov50 | n_days | n_airings | watch_sec |", "|---|---|---|---|---|---|"]
+    lines += [f"| `{r['params']}` | {r['select']:.4f} | {r.get('cov50', float('nan')):.4f} | {r['n_days']:.4f} | "
+              f"{r['n_airings']:.4f} | {r['watch_sec']:.4f} |" for r in temporal_rows]
     lines += ["", f"Selected: `{best_row['params']}` (select {best_row['select']:.4f}); repeat {repeat_sel:.4f}. "
               f"Clearly better ({clear_rule}): {clear}. Final config "
               f"(objective with the best temporal check): `{final_params}`. Submission: {sub_note}.",
@@ -622,11 +687,14 @@ def main() -> None:
     CFG["out_md"].write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     section = ["## Hybrid vs components (test users)", "",
-               f"Produced by `python -m src.hybrid{' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}`. Components from experiments.csv (rows on the fixed data where available, docs/errata.md); hybrid = best re-ranker "
+               f"Produced by `python -m src.hybrid{' --cov-target' if CFG['cov_target'] else ' --coverage' if CFG['coverage'] else ' --slots' if CFG['slots'] else ''}`. Components from experiments.csv (rows on the fixed data where available, docs/errata.md); hybrid = best re-ranker "
                "(trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).", "",
-               "| method | select | n_days | n_airings | watch_sec |", "|---|---|---|---|---|"]
+               "| method | select | cov50 | n_days | n_airings | watch_sec |", "|---|---|---|---|---|---|"]
     section += [fmt_row(k, v) for k, v in comp.items()]
-    if CFG["coverage"]:
+    if CFG["cov_target"]:
+        section += [fmt_row("hybrid on cov50 labels (re-ranker)", best_row),
+                    fmt_row("hybrid on cov50 labels, temporal check", best_temporal)]
+    elif CFG["coverage"]:
         section += [fmt_row("hybrid v2 (+ slot habits), before tz fix", best_logged("hybrid_lgbm_slots", False, False)),
                     fmt_row("hybrid v2, temporal check, before tz fix", best_logged("hybrid_lgbm_slots", True, False)),
                     fmt_row("hybrid v2 (+ slot habits), fixed data", best_logged("hybrid_lgbm_slots", False)),

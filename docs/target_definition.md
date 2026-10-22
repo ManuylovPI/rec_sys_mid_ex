@@ -84,3 +84,72 @@ Runtime: 9.3 s.
   coverage definitions near the bottom).
 - Same caveat as before: three related submissions give two independent gap ratios, so this ranks candidate
   definitions; it does not identify the exact rule.
+
+## What the fourth submission showed: the n_days target was wrong
+
+The study above compared the leaderboard with three submissions that **all rank shows by any-overlap counts**
+(popularity_v1, repeat_v1, repeat_v2). Such configs are bound to agree best with an any-overlap target, so the
+study could only rank candidate targets among themselves; it could not test a definition none of the submitted
+models used. We missed this selection effect and selected models on n_days (stages 7-8).
+
+The project author pointed to a prize-winning write-up (docs/external_sources.md #1) whose simplest baseline counts
+a show as watched only if one sitting covers more than 50% of it. We re-implemented that baseline
+(`src/repeat_cont.py`, repeat_cont50) and submitted it as a direct test. Before submitting, we wrote down what each
+target hypothesis predicted for its leaderboard score (docs/repeat_cont_results.md; one scale factor per target
+fitted on the three earlier submissions):
+
+| target hypothesis | predicted public | predicted private |
+|---|---|---|
+| n_days (any overlap, distinct days) | 0.298 | 0.283 |
+| cont50 (one continuous view > 50%, airings) | 0.380 | 0.360 |
+| cont80 (one continuous view > 80%, airings) | 0.387 | 0.368 |
+| **actual result** | **0.417** | **0.400** |
+
+On validation the same config scored 0.369 on n_days, against 0.4535 for repeat_v2; on the leaderboard it beat
+repeat_v2 by 0.049 public (0.417 vs 0.368) and 0.052 private. The n_days hypothesis predicted 0.298 and is
+clearly rejected. The coverage hypotheses point the right way but still under-predict by about 0.03, so neither
+of our cont definitions is the exact rule either.
+
+Consequences:
+- Every model choice made on n_days (stages 7-8) was tuned to the wrong label: the loyalty repeat, the hybrid
+  re-rankers and their "improvements" were measured against a target that does not match the leaderboard.
+  The earlier ranking of methods may still hold qualitatively, but its numbers have to be re-measured.
+- The target study is redone below with all four leaderboard points; repeat_cont50 is the point that actually
+  discriminates between definitions.
+- Lesson for the report: agreement with the leaderboard is only informative if the submitted models disagree
+  about the candidate targets. A cheap diagnostic submission built on a different definition was worth more
+  than the whole study.
+
+## Study with four leaderboard points
+
+Produced by `python -m src.target_study4` on 2026-10-22 17:29 (data after the time-zone fix). Validation weeks 11-20 -> 21-30, 1260 test users, the four submitted configs. `cov{cut}_{unit}_{source}`: airings (or distinct days) where one view covers more than cut% of the airing; merged = our merged continuous intervals per user and channel, raw = each raw view row on its own. `cv` = coefficient of variation of the four LB/val ratios; `LOO pred` = repeat_cont50's leaderboard score predicted from a scale fitted on the other three submissions (actual 0.417 public / 0.400 private). Sorted by cv public + cv private.
+
+| target | pop_v1 | repeat_v1 | repeat_v2 | repeat_cont50 | LB/val ratios public | cv public | cv private | LOO pred public | LOO pred private |
+|---|---|---|---|---|---|---|---|---|---|
+| cov50_airings_merged | 0.2752 | 0.3335 | 0.3576 | 0.3841 | 0.927 / 0.996 / 1.028 / 1.086 | 0.0569 | 0.0582 | 0.381 | 0.362 |
+| cov50_airings_raw | 0.2749 | 0.3325 | 0.3564 | 0.3827 | 0.928 / 0.999 / 1.031 / 1.090 | 0.0578 | 0.0591 | 0.381 | 0.361 |
+| cov80_airings_merged | 0.2600 | 0.3015 | 0.3231 | 0.3583 | 0.981 / 1.101 / 1.137 / 1.164 | 0.0639 | 0.0633 | 0.389 | 0.369 |
+| cov80_airings_raw | 0.2607 | 0.3001 | 0.3223 | 0.3588 | 0.978 / 1.106 / 1.140 / 1.162 | 0.0651 | 0.0642 | 0.390 | 0.370 |
+| cov30_airings_raw | 0.2847 | 0.3548 | 0.3811 | 0.3918 | 0.896 / 0.936 / 0.964 / 1.064 | 0.0646 | 0.0676 | 0.368 | 0.349 |
+| cov30_airings_merged | 0.2849 | 0.3554 | 0.3812 | 0.3919 | 0.895 / 0.934 / 0.964 / 1.064 | 0.0648 | 0.0678 | 0.367 | 0.349 |
+| cov80_days_merged | 0.2646 | 0.3104 | 0.3341 | 0.3518 | 0.964 / 1.070 / 1.100 / 1.185 | 0.0733 | 0.0745 | 0.371 | 0.352 |
+| cov80_days_raw | 0.2645 | 0.3090 | 0.3329 | 0.3516 | 0.964 / 1.075 / 1.104 / 1.186 | 0.0735 | 0.0746 | 0.372 | 0.353 |
+| cov50_days_merged | 0.2793 | 0.3394 | 0.3693 | 0.3718 | 0.913 / 0.978 / 0.995 / 1.121 | 0.0754 | 0.0782 | 0.361 | 0.342 |
+| cov50_days_raw | 0.2794 | 0.3389 | 0.3685 | 0.3709 | 0.913 / 0.980 / 0.997 / 1.124 | 0.0763 | 0.0791 | 0.360 | 0.342 |
+| cov30_days_raw | 0.2879 | 0.3624 | 0.3918 | 0.3812 | 0.886 / 0.916 / 0.938 / 1.094 | 0.0839 | 0.0877 | 0.350 | 0.332 |
+| cov30_days_merged | 0.2882 | 0.3625 | 0.3921 | 0.3809 | 0.885 / 0.916 / 0.937 / 1.095 | 0.0846 | 0.0885 | 0.350 | 0.332 |
+| n_airings | 0.3100 | 0.4062 | 0.4395 | 0.3888 | 0.823 / 0.817 / 0.836 / 1.072 | 0.1209 | 0.1257 | 0.321 | 0.305 |
+| n_days | 0.3167 | 0.4108 | 0.4512 | 0.3690 | 0.805 / 0.808 / 0.815 / 1.130 | 0.1562 | 0.1611 | 0.299 | 0.284 |
+
+Runtime: 7.5 s.
+### Conclusion of the four-point study (written by hand from the table above)
+
+- With repeat_cont50 included, the any-overlap targets fit worst: n_days cv 0.156 public / 0.161 private, and
+  its leave-one-out prediction for repeat_cont50 is 0.299 against the actual 0.417.
+- The best candidate is **cov50_airings_merged** (airings where one merged continuous view covers more than 50%
+  of the airing): cv 0.057 / 0.058. The raw single-view variant is practically identical (cv 0.058 / 0.059),
+  so our cross-device merge does not matter for the target. Model selection uses cov50 from stage 10 on.
+- No candidate fits well. Even for cov50 the LB/val ratio rises with model quality (0.93 popularity, 0.99
+  repeat_v1, 1.03 repeat_v2, 1.09 repeat_cont50) and the leave-one-out prediction for repeat_cont50 is 0.381
+  against 0.417. The hidden rule is therefore still not identified; cov50 is the best available approximation,
+  and validation numbers on it should be read as rankings rather than as leaderboard estimates.

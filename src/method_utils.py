@@ -52,4 +52,4 @@ def results_table(rows: list[dict], cols: list[str]) -> list[str]:
     return out
 
 
-RESULT_COLS = [f"{p}/{d}" for p in ("test_users", "active_both") for d in ("n_days", "n_airings", "watch_sec")]
+RESULT_COLS = [f"{p}/{d}" for p in ("test_users", "active_both") for d in ("cov50", "n_days", "n_airings", "watch_sec")]

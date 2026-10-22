@@ -5,11 +5,14 @@ channel: the merged view intervals of src.build_interactions (overlapping/touchi
 channel merged) with the Monday 00:00 week cuts joined back together, so one interval = one continuous stretch
 on one channel. Separate views are NOT summed (that is what pairs_labelled.frac_watched does).
 
-Output data/processed/coverage.parquet:
+A second table uses every raw view row as its own interval (no cross-device merge, no joining of touching
+views), closer to a literal "one view without changing the channel": data/processed/coverage_raw.parquet.
+
+Output data/processed/coverage.parquet (and coverage_raw.parquet, same columns):
   user_id, airing_id, tv_show_id, channel_id, air_duration, cont_frac (best single interval / duration),
   cont_start (start of the overlap of that best interval), week and day of cont_start.
 
-Usage: python -m src.coverage   ->  data/processed/coverage.parquet, docs/coverage_summary.md
+Usage: python -m src.coverage   ->  data/processed/coverage.parquet, coverage_raw.parquet, docs/coverage_summary.md
 """
 import time
 
@@ -17,6 +20,7 @@ from src.data import PROCESSED, ROOT, connect
 from src.report_utils import MdReport
 
 OUT = PROCESSED / "coverage.parquet"
+OUT_RAW = PROCESSED / "coverage_raw.parquet"
 OUT_MD = ROOT / "docs" / "coverage_summary.md"
 B = 3600
 
@@ -26,6 +30,7 @@ def pq(name: str) -> str:
 
 
 def build(con) -> float:
+    """Merged continuous intervals -> coverage.parquet."""
     t = time.time()
     con.execute(f"""
         CREATE OR REPLACE TABLE cont AS
@@ -38,13 +43,32 @@ def build(con) -> float:
         SELECT row_number() OVER () AS cid, user_id, channel_id,
                epoch(min(start_time))::BIGINT AS v0, epoch(max(stop_time))::BIGINT AS v1
         FROM g GROUP BY user_id, channel_id, grp""")
+    join_coverage(con, "cont", OUT)
+    return time.time() - t
+
+
+def build_raw(con) -> float:
+    """Every raw view row as its own interval -> coverage_raw.parquet."""
+    from src.data import register_raw
+    t = time.time()
+    register_raw(con)
+    con.execute("""
+        CREATE OR REPLACE TABLE cont_raw AS
+        SELECT row_number() OVER () AS cid, user_id, vsetv_id AS channel_id,
+               epoch(start_time)::BIGINT AS v0, epoch(stop_time)::BIGINT AS v1
+        FROM raw_views WHERE stop_time > start_time""")
+    join_coverage(con, "cont_raw", OUT_RAW)
+    return time.time() - t
+
+
+def join_coverage(con, intervals: str, out) -> None:
     con.execute(f"""
         CREATE OR REPLACE TABLE cov AS
         WITH sb AS (
             SELECT airing_id, channel_id, tv_show_id, duration, epoch(start_time)::BIGINT AS a0, epoch(end_time)::BIGINT AS a1,
                    unnest(range(epoch(start_time)::BIGINT // {B}, (epoch(end_time)::BIGINT - 1) // {B} + 1)) AS bucket
             FROM '{pq('schedule')}' WHERE tv_show_id <> 0),
-        vb AS (SELECT cid, user_id, channel_id, v0, v1, unnest(range(v0 // {B}, (v1 - 1) // {B} + 1)) AS bucket FROM cont),
+        vb AS (SELECT cid, user_id, channel_id, v0, v1, unnest(range(v0 // {B}, (v1 - 1) // {B} + 1)) AS bucket FROM {intervals}),
         p AS (
             SELECT vb.user_id, sb.airing_id, sb.tv_show_id, sb.channel_id, sb.duration,
                    least(vb.v1, sb.a1) - greatest(vb.v0, sb.a0) AS ov, greatest(vb.v0, sb.a0) AS ov_start
@@ -55,15 +79,15 @@ def build(con) -> float:
                make_timestamp(arg_max(ov_start, ov) * 1000000) AS cont_start
         FROM p GROUP BY user_id, airing_id""")
     con.execute(f"""COPY (SELECT *, week(cont_start) AS week, cont_start::DATE AS day FROM cov)
-                    TO '{OUT.as_posix()}' (FORMAT parquet)""")
-    return time.time() - t
+                    TO '{out.as_posix()}' (FORMAT parquet)""")
 
 
 def main() -> None:
     con = connect()
     runtime = build(con)
+    runtime_raw = build_raw(con)
     r = MdReport("Continuous-view coverage of labelled airings")
-    r.text(f"Produced by `python -m src.coverage`. Build time {runtime:.1f} s.")
+    r.text(f"Produced by `python -m src.coverage`. Build time {runtime:.1f} s (merged), {runtime_raw:.1f} s (raw views).")
     r.query(con, "Counts", f"""
         SELECT (SELECT count(*) FROM cont) AS continuous_intervals, count(*) AS user_airing_pairs,
                max(cont_frac) AS max_cont_frac, min(week) AS min_week, max(week) AS max_week FROM '{OUT.as_posix()}'""")
@@ -73,6 +97,11 @@ def main() -> None:
         SELECT t AS threshold, sum((c.cont_frac >= t)::INT) AS continuous, sum((s.frac_sum >= t)::INT) AS summed
         FROM c JOIN s USING (user_id, airing_id), (VALUES (0.3), (0.5), (0.7), (0.8), (0.9)) v(t)
         GROUP BY 1 ORDER BY 1""")
+    r.query(con, "Merged continuous intervals vs raw single views: pairs reaching each threshold", f"""
+        SELECT t AS threshold,
+               (SELECT count(*) FROM '{OUT.as_posix()}' WHERE cont_frac > t) AS merged_gt,
+               (SELECT count(*) FROM '{OUT_RAW.as_posix()}' WHERE cont_frac > t) AS raw_gt
+        FROM (VALUES (0.3), (0.5), (0.8)) v(t) ORDER BY 1""", note="Strict > as in the write-up's 'more than 50%'.")
     r.save(OUT_MD)
 
 

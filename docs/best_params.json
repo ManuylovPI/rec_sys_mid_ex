@@ -9,7 +9,7 @@
     "reg": 0.01,
     "weighting": "bm25"
   },
-  "als_select": 0.2926746031746032,
+  "als_select": 0.25281657848324507,
   "cbf": {
     "max_actors": 5,
     "min_df": 2,
@@ -18,7 +18,7 @@
     "profile_unit": "n_days_hl8",
     "rep": "tfidf"
   },
-  "cbf_select": 0.12762433862433828,
+  "cbf_select": 0.11535097001763651,
   "hybrid": {
     "min_child_samples": 20,
     "n_cand": 20,
@@ -35,6 +35,23 @@
     "objective": "lambdarank_log",
     "train": "weeks 11-20 -> 21-30, non-test users"
   },
+  "hybrid_cov50": {
+    "min_child_samples": 20,
+    "n_cand": 20,
+    "n_trees": 208,
+    "num_leaves": 15,
+    "objective": "lambdarank_log",
+    "train": "weeks 11-20 -> 21-30, non-test users"
+  },
+  "hybrid_cov50_final": {
+    "min_child_samples": 20,
+    "n_cand": 20,
+    "n_trees": 208,
+    "num_leaves": 15,
+    "objective": "lambdarank_log",
+    "train": "weeks 11-20 -> 21-30, non-test users"
+  },
+  "hybrid_cov50_select": 0.4271461640211636,
   "hybrid_cov_final": {
     "min_child_samples": 20,
     "n_cand": 20,
@@ -79,6 +96,25 @@
     "threshold": "none",
     "unit": "n_days"
   },
+  "repeat_cov": {
+    "cut": 0.3,
+    "half_life": 4,
+    "min_count": 3,
+    "scale": "loyalty10",
+    "source": "merged",
+    "tie": "pop",
+    "unit": "airings"
+  },
+  "repeat_cov_select": 0.40803174603174597,
+  "repeat_loyalty": {
+    "beta": 10,
+    "delta": 1.0,
+    "fill": "channels_m3",
+    "half_life": 8,
+    "score": "loyalty",
+    "threshold": "none",
+    "unit": "n_days"
+  },
   "repeat_select": 0.4535105820105828,
   "slot": {
     "agg": "airings",
@@ -86,5 +122,5 @@
     "half_life": 8,
     "model": "slot"
   },
-  "slot_select": 0.4041137566137566
+  "slot_select": 0.4014975749559078
 }
