@@ -19,6 +19,15 @@
     "rep": "tfidf"
   },
   "cbf_select": 0.12811507936507913,
+  "hybrid": {
+    "min_child_samples": 20,
+    "n_cand": 20,
+    "n_trees": 363,
+    "num_leaves": 15,
+    "objective": "binary",
+    "train": "weeks 11-20 -> 21-30, non-test users"
+  },
+  "hybrid_select": 0.466030423280423,
   "repeat": {
     "beta": 10,
     "delta": 1.0,

@@ -36,3 +36,16 @@ Shares are over all ground-truth target shows of the test users (up to 5 per use
 - cbf: `{'max_actors': 5, 'min_df': 2, 'people_weight': 4.0, 'profile': 'linear', 'profile_unit': 'n_days_hl8', 'rep': 'tfidf'}`
 
 Total runtime: 7.8 s.
+
+## Hybrid vs components (test users)
+
+Produced by `python -m src.hybrid`. Components from experiments.csv; hybrid = best re-ranker (trained on non-test users, weeks 11-20 -> 21-30) and its temporal check (trained on weeks 11-15 -> 16-20).
+
+| method | select | n_days | n_airings | watch_sec |
+|---|---|---|---|---|
+| popularity | 0.3137 | 0.3174 | 0.3100 | 0.1799 |
+| repeat | 0.4499 | 0.4566 | 0.4432 | 0.2947 |
+| als | 0.2963 | 0.2998 | 0.2927 | 0.1832 |
+| cbf | 0.1281 | 0.1286 | 0.1276 | 0.0886 |
+| hybrid (LightGBM re-ranker) | 0.4660 | 0.4730 | 0.4590 | 0.3032 |
+| hybrid, temporal check | 0.4581 | 0.4636 | 0.4526 | 0.2921 |

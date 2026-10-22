@@ -119,7 +119,7 @@ def main() -> None:
     with open(log_md, "a", encoding="utf-8") as f:
         for name, (desc, _) in subs.items():
             f.write(f"| {name} | {desc}; fit weeks 11-30, pool = labelled shows airing weeks 31-42 | "
-                    f"{dt.date.today().isoformat()} |  |  |\n")
+                    f"{dt.date.today().isoformat()} |  |  |  |\n")
 
     # --- results file
     cols = [f"{p}/{d}" for p in data.populations for d in TARGET_DEFS]

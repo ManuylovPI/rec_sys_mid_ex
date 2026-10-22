@@ -182,7 +182,7 @@ def main() -> None:
     n_comb = [min(len(combined.get(u, [])), K) for u in users]
     with open(ROOT / "submissions" / "LOG.md", "a", encoding="utf-8") as f:
         f.write(f"| {SUB.name} | repeat_v2, {best}, fallback popularity n_weeks={POP_N}; fit weeks 11-30, "
-                f"pool = labelled shows airing weeks 31-42 | {dt.date.today().isoformat()} |  |  |\n")
+                f"pool = labelled shows airing weeks 31-42 | {dt.date.today().isoformat()} |  |  |  |\n")
 
     # --- results file
     cols = [f"{p}/{d}" for p in data.populations for d in ("n_days", "n_airings", "watch_sec")]
