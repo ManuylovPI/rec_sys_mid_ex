@@ -138,7 +138,7 @@
 <p><span class="runin">How AI was used.</span> Code generation for every module in <code>src/</code>, data inspection and debugging (the time-zone bug, the user-id overflow), experiment runs and logging, reference checks (DOIs and URLs), figures and a first draft of this report (Claude Code); planning and prompt drafting (Claude).</p>
 <p><span class="runin">What I personally verified.</span> <span class="pavel">[PAVEL: e.g. the hand-computed AP@5 in reports/hand_check.md; the Kaggle scores against the Submissions page; that I opened and read the write-up [2] (22 Oct. 2026); ...]</span></p>
 <p><span class="runin">What I trusted without verification.</span> The aggregate numbers in Tables I-III and the logs were computed by agent-written code that I did not re-implement; the agent's join check and unit tests are the only independent checks of that code. The metadata of references [3]-[6] was checked by the agent through DOI/Crossref and publisher pages, not read in full by me. The agent could not open [2] (HTTP 403); I verified it myself. The cause given for the reproducibility limit is a hypothesis.</p>
-<p><span class="runin">Session log reference.</span> <code>manuilov_exam_session.jsonl</code> is the unmodified Claude Code transcript of this session.</p>
+<p><span class="runin">Session log reference.</span> <code>manuilov_exam_session.json</code> is the original, unmodified Claude Code transcript of this session. Claude Code stores sessions natively as JSONL (one JSON record per line); because the submission form accepts only .json and .pdf, I changed only the file extension from .jsonl to .json. The content is unmodified, byte for byte.</p>
 
 <h2>References</h2>
 <div class="refs">
