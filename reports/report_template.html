@@ -127,13 +127,13 @@
 <ul>
 <li>A small diagnostic experiment, with the expected score written down first, found the problem early.</li>
 <li>I checked the fast join against a brute-force join: 0 mismatches.</li>
-<li>I chose the re-ranker by the temporal check, not only the main split. It showed that part of the binary model's lead was leakage.</li>
+<li>I chose the re-ranker by the temporal check, not only the main split. It suggested that part of the binary model's lead was leakage.</li>
 </ul>
 <p><span class="runin">What did not work as expected.</span></p>
 <ul>
 <li>Both required methods lost to popularity: ALS 0.253 and CBF 0.115 against 0.275 (cov50).</li>
-<li>Slot habits worked well alone (0.402) but added little to the hybrid.</li>
-<li>More candidates, extra features and recent training folds barely moved validation (0.4271 to 0.4275). Yet the refit with the most recent fold raised private from 0.433 to 0.442. My validation could not see this gain.</li>
+<li>Slot habits worked well alone (0.401) but added little to the hybrid.</li>
+<li>More candidates, extra features and recent training folds barely moved validation (0.4271 to 0.4275). Yet the refit that combined these changes, including the most recent fold, raised private from 0.433 to 0.442. My validation could not see this gain.</li>
 </ul>
 <p><span class="runin">Next improvement.</span> Make the rank features deterministic and run the final experiment twice. Then compare models only when their difference is larger than this run-to-run noise.</p>
 
