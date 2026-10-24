@@ -8,6 +8,8 @@ Predict the five TV programmes each of 1,260 test users will watch in weeks 31-4
 submission selection after the deadline, so the final file is designated here and in the report. All submissions
 and their scores: [`submissions/LOG.md`](submissions/LOG.md); screenshot: `reports/figures/kaggle_submissions.png`.
 
+Report: [`reports/manuilov_exam_report.pdf`](reports/manuilov_exam_report.pdf), built from `reports/report_template.html` by `reports/build_report.py` (tables are filled from the repository files).
+
 ## Approach in short
 
 1. **Join** the view log to the schedule: same channel, overlapping intervals. Overlapping views of one user on one
