@@ -136,6 +136,8 @@ def train(df: pd.DataFrame, objective: str, num_leaves: int, min_child: int, see
         if objective != "binary":
             kw["eval_group"] = [va.groupby("qid", sort=False).size().to_numpy()]
             kw["eval_at"] = [K]
+    if "w" in tr:  # optional per-row sample weight (constant within a query group)
+        kw["sample_weight"] = tr["w"].to_numpy()
     model.fit(tr[FEATS], tr[label], categorical_feature=CAT, **kw)
     return model
 
