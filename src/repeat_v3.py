@@ -38,11 +38,11 @@ SCALES = ["plain", "loyalty5", "loyalty10"]
 class CovCounts:
     """Per (user, show, week) coverage counts for one history window."""
 
-    def __init__(self, con, usw, st, hist_weeks):
+    def __init__(self, con, usw, st, hist_weeks, cuts=None):
         self.st, self.hw = st, hist_weeks
         self.counts = {}
         for src, path in SOURCES.items():
-            for cut in CUTS:
+            for cut in (cuts or CUTS):
                 self.counts[(src, cut)] = con.sql(f"""
                     SELECT user_id, tv_show_id, week, count(*) AS airings, count(DISTINCT day) AS days
                     FROM '{path.as_posix()}' WHERE week BETWEEN {hist_weeks[0]} AND {hist_weeks[1]} AND cont_frac > {cut}

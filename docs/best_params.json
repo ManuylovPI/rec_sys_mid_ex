@@ -87,6 +87,23 @@
     "train": "weeks 11-20 -> 21-30, non-test users"
   },
   "hybrid_v2_select": 0.47480952380952396,
+  "hybrid_v4_options": [
+    {
+      "file": "hybrid_v3_lr",
+      "main": 0.42754078483245145,
+      "temporal": 0.4202676366843036
+    },
+    {
+      "file": "hybrid_v3_ens",
+      "main": 0.4272186948853616,
+      "temporal": 0.42276631393298075
+    },
+    {
+      "file": "hybrid_v3_lr_seeds",
+      "main": 0.42711750440917073,
+      "temporal": 0.4204488536155203
+    }
+  ],
   "repeat": {
     "beta": 10,
     "delta": 1.0,

@@ -240,7 +240,7 @@ class Window:
         # ---- repeat on the cov50 target (cov_target version): candidates, score and rank
         if cov_target:
             from src.repeat_v3 import CovCounts
-            self.cc = CovCounts(con, usw, st, hist_weeks)
+            self.cc = CovCounts(con, usw, st, hist_weeks, cuts=sorted({0.3, 0.5, 0.8, best["repeat_cov"]["cut"]}))
             self.rc_params = best["repeat_cov"]
             rc = self.cc.scores({**self.rc_params, "min_count": 1})[["user_id", "tv_show_id", "score"]]
             rc["rc_rank"] = rc.groupby("user_id")["score"].rank(ascending=False, method="first")
