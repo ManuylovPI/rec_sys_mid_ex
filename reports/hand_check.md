@@ -1,7 +1,7 @@
 # Hand check of AP@5 for one validation user
 
 Prepared by the AI assistant for a by-hand computation by the student. The AP@5 below is the value the code computes
-(`src.metrics.apk`); the hand computation is deliberately left blank.
+(`src.metrics.apk`); the hand computation below was done by the student in Excel.
 
 - User: `2725163102947201526` (the heavy viewer of docs/examples.md)
 - Split: history weeks 11-20, target weeks 21-30 (validation)
@@ -37,14 +37,14 @@ in the truth list and P(k) = (number of hits in the first k predictions) / k.
 
 ## Value printed by the code: AP@5 = 0.333333
 
-## Hand computation (to be filled in by the student)
+## Hand computation (done by the student in Excel, screenshot reports/figures/hand_check.png)
 
 | rank k | predicted id | rel(k) | hits so far | P(k) | P(k) * rel(k) |
 |---|---|---|---|---|---|
-| 1 | 2400508 |  |  |  |  |
-| 2 | 240081 |  |  |  |  |
-| 3 | 5900256 |  |  |  |  |
-| 4 | 2400467 |  |  |  |  |
-| 5 | 2400480 |  |  |  |  |
+| 1 | 2400508 | 1 | 1 | 1 | 1 |
+| 2 | 240081 | 0 | 1 | 0.5 | 0 |
+| 3 | 5900256 | 1 | 2 | 0.6667 | 0.6667 |
+| 4 | 2400467 | 0 | 2 | 0.5 | 0 |
+| 5 | 2400480 | 0 | 2 | 0.4 | 0 |
 
-Sum = ____ ; min(|truth|, 5) = ____ ; AP@5 by hand = ____ ; matches the code value: yes / no
+Sum = 1.6667 ; min(|truth|, 5) = 5 ; AP@5 by hand = 0.3333 ; matches the code value: yes
