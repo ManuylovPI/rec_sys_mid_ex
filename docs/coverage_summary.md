@@ -1,8 +1,8 @@
 # Continuous-view coverage of labelled airings
 
-Generated 2026-10-22 17:28:52 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
+Generated 2026-10-24 12:38:34 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
 
-Produced by `python -m src.coverage`. Build time 3.1 s (merged), 3.6 s (raw views).
+Produced by `python -m src.coverage`. Build time 3.3 s (merged), 3.5 s (raw views).
 
 ## Counts
 

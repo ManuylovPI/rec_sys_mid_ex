@@ -1,3 +1,5 @@
+> **Superseded** (stage 7, selection on n_days (the new-content measurement in it is still valid)). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Slot habits
 
 Produced by `python -m src.slots` on 2026-10-22 17:07. Same harness as all methods (history 11-20, target 21-30, 1,260 test users, shared popularity fallback); `select` = MAP@5 on n_days.

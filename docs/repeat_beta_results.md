@@ -1,3 +1,5 @@
+> **Superseded** (stage 4, selection on n_days + n_airings (any overlap)). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Repeat v2: beta extension
 
 Produced by `python -m src.repeat_beta` on 2026-10-22 16:43. Same harness and selection as docs/repeat_v2_results.md (beta 0/1/5 results are there). First row is the submitted repeat_v2 config re-evaluated as reference.

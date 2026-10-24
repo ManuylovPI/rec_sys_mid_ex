@@ -122,7 +122,7 @@ Consequences:
 
 ## Study with four leaderboard points
 
-Produced by `python -m src.target_study4` on 2026-10-22 17:29 (data after the time-zone fix). Validation weeks 11-20 -> 21-30, 1260 test users, the four submitted configs. `cov{cut}_{unit}_{source}`: airings (or distinct days) where one view covers more than cut% of the airing; merged = our merged continuous intervals per user and channel, raw = each raw view row on its own. `cv` = coefficient of variation of the four LB/val ratios; `LOO pred` = repeat_cont50's leaderboard score predicted from a scale fitted on the other three submissions (actual 0.417 public / 0.400 private). Sorted by cv public + cv private.
+Produced by `python -m src.target_study4` on 2026-10-24 12:38 (data after the time-zone fix). Validation weeks 11-20 -> 21-30, 1260 test users, the four submitted configs. `cov{cut}_{unit}_{source}`: airings (or distinct days) where one view covers more than cut% of the airing; merged = our merged continuous intervals per user and channel, raw = each raw view row on its own. `cv` = coefficient of variation of the four LB/val ratios; `LOO pred` = repeat_cont50's leaderboard score predicted from a scale fitted on the other three submissions (actual 0.417 public / 0.400 private). Sorted by cv public + cv private.
 
 | target | pop_v1 | repeat_v1 | repeat_v2 | repeat_cont50 | LB/val ratios public | cv public | cv private | LOO pred public | LOO pred private |
 |---|---|---|---|---|---|---|---|---|---|
@@ -141,7 +141,7 @@ Produced by `python -m src.target_study4` on 2026-10-22 17:29 (data after the ti
 | n_airings | 0.3100 | 0.4062 | 0.4395 | 0.3888 | 0.823 / 0.817 / 0.836 / 1.072 | 0.1209 | 0.1257 | 0.321 | 0.305 |
 | n_days | 0.3167 | 0.4108 | 0.4512 | 0.3690 | 0.805 / 0.808 / 0.815 / 1.130 | 0.1562 | 0.1611 | 0.299 | 0.284 |
 
-Runtime: 7.5 s.
+Runtime: 7.9 s.
 ### Conclusion of the four-point study (written by hand from the table above)
 
 - With repeat_cont50 included, the any-overlap targets fit worst: n_days cv 0.156 public / 0.161 private, and

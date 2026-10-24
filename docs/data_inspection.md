@@ -1,6 +1,6 @@
 # Raw data inspection
 
-Generated 2026-10-22 16:16:01 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
+Generated 2026-10-24 12:37:44 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
 
 All numbers below are produced by `python -m src.inspect_raw` on the unmodified files in `data/raw/`.
 
@@ -128,7 +128,7 @@ Across all channels. The interaction build merges overlaps per (user, channel).
 
 | n_overlapping |
 |---|
-| 379316 |
+| 379324 |
 
 ## Schedule 11-20: summary
 
@@ -324,4 +324,4 @@ Few overlaps and only one across files: the files hand off cleanly and can simpl
 |---|---|---|---|---|---|
 | 1260 | 1260 | 1260 | 1256 | 1246 | 0 0 0 0 0 |
 
-Runtime: 20.1 s.
+Runtime: 20.2 s.

@@ -1,3 +1,5 @@
+> **Superseded** (stage 2, any-overlap targets, selection on the mean of three any-overlap targets). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Baselines: validation results
 
 Produced by `python -m src.baselines` on 2026-10-22 16:23. History weeks 11-20, target weeks 21-30, pool = 6376 labelled shows airing in weeks 21-30. Populations: test_users = 1260, active_both = 4752 (labelled interactions in both windows). MAP@5; users with empty ground truth count as 0. `select` = mean over the three targets on test_users.

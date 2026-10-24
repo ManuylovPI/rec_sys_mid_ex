@@ -1,6 +1,6 @@
 # Join verification
 
-Generated 2026-10-22 17:15:39 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
+Generated 2026-10-24 12:38:27 on Windows-10-10.0.26200-SP0, Python 3.11.9, duckdb 2.0.0.
 
 Users: view-segment rows sampled with reservoir(300) seed 42, then their distinct users. Brute force = plain channel + interval-overlap join, no hour buckets.
 
@@ -8,6 +8,6 @@ Users: view-segment rows sampled with reservoir(300) seed 42, then their distinc
 
 | users | brute_pairs | built_pairs | brute_overlap_sec | built_overlap_sec | mismatched_pairs |
 |---|---|---|---|---|---|
-| 280 | 584266 | 584266 | 678556621 | 678556621 | 0 |
+| 284 | 610862 | 610862 | 709882688 | 709882688 | 0 |
 
-Runtime: 5.2 s.
+Runtime: 5.7 s.

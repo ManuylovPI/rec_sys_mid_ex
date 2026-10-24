@@ -1,3 +1,5 @@
+> **Superseded** (stage 5, any-overlap n_days labels). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Hybrid re-ranker: feature importance
 
 Produced by `python -m src.hybrid` on 2026-10-22 16:58. Model: `{'objective': 'binary', 'num_leaves': 15, 'min_child_samples': 20, 'n_trees': 363, 'n_cand': 20, 'train': 'weeks 11-20 -> 21-30, non-test users'}`.

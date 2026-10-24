@@ -1,3 +1,5 @@
+> **Superseded** (stages 4-10; the accuracy and complementarity tables use the any-overlap n_days target). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Method comparison (validation)
 
 Produced by `python -m src.compare_methods` on 2026-10-22 17:06. History weeks 11-20, target weeks 21-30, pool = 6376 labelled shows airing in weeks 21-30, repeats allowed, shared fallback = popularity (watch seconds, last 10 history weeks). MAP@5; `select` = mean of n_days and n_airings targets on the 1260 test users. Selection scores were checked against the logged grid runs.

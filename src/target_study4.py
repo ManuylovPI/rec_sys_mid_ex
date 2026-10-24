@@ -26,6 +26,7 @@ from src.repeat_v2 import POP_N, Stats, predict as repeat_predict
 
 OUT_MD = ROOT / "docs" / "target_definition.md"
 MARKER = "## Study with four leaderboard points"
+CONCLUSION = "### Conclusion of the four-point study"
 SOURCES = {"merged": PROCESSED / "coverage.parquet", "raw": PROCESSED / "coverage_raw.parquet"}
 LB = {"popularity_v1": (0.255, 0.244), "repeat_v1": (0.332, 0.314), "repeat_v2": (0.36752, 0.348),
       "repeat_cont50": (0.417, 0.400)}
@@ -106,7 +107,10 @@ def main() -> None:
                      + f" | {r['cv_pub']:.4f} | {r['cv_priv']:.4f} | {r['loo_pub']:.3f} | {r['loo_priv']:.3f} |")
     lines += ["", f"Runtime: {time.time() - t_all:.1f} s.", ""]
     text = OUT_MD.read_text(encoding="utf-8")
-    text = text.split(MARKER)[0].rstrip() + "\n\n" + "\n".join(lines)
+    keep = ""  # a hand-written conclusion after the generated table survives re-runs
+    if CONCLUSION in text:
+        keep = CONCLUSION + text.split(CONCLUSION, 1)[1]
+    text = text.split(MARKER)[0].rstrip() + "\n\n" + "\n".join(lines) + keep
     OUT_MD.write_text(text, encoding="utf-8")
     for r in rows[:8]:
         print(f"{r['def']:>22}: cv {r['cv_pub']:.4f}/{r['cv_priv']:.4f} loo {r['loo_pub']:.3f}/{r['loo_priv']:.3f} "

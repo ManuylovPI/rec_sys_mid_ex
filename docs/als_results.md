@@ -1,3 +1,5 @@
+> **Superseded** (stage 4, any-overlap targets). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Implicit ALS: validation results
 
 Produced by `python -m src.als` on 2026-10-22 16:45, implicit 0.7.3, random_state 42. Matrix: 4841 users x 2973 shows (weeks 11-20), 856904 non-zeros; 2203 of 6376 pool shows have item factors. Already-watched shows are not filtered. Same harness and selection as repeat_v2.

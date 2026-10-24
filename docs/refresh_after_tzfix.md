@@ -1,3 +1,5 @@
+> **Superseded** (stage 8, selection on n_days). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Components re-scored after the time-zone fix
 
 Produced by `python -m src.refresh` on 2026-10-22 17:17. Test users, MAP@5 on n_days (selection target). `before` = value on the shifted day counts (docs/errata.md).

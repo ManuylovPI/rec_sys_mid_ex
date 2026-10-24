@@ -1,3 +1,5 @@
+> **Superseded** (stage 4, any-overlap targets). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Content-based filtering: validation results
 
 Produced by `python -m src.cbf` on 2026-10-22 16:48. 8233 shows with metadata (schedule weeks <= 30); 6376 of 6376 pool shows have a vector. Already-watched shows are not filtered. Same harness and selection as repeat_v2.

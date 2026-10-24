@@ -1,3 +1,5 @@
+> **Superseded** (stage 3, selection on n_days + n_airings (any overlap)). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Repeat v2: validation results
 
 Produced by `python -m src.repeat_v2` on 2026-10-22 16:35. Same harness as stage 2: history weeks 11-20, target weeks 21-30, pool 6376 shows, populations test_users 1260 / active_both 4752. `select` = mean MAP@5 of n_days, n_airings on test_users (see docs/target_definition.md).

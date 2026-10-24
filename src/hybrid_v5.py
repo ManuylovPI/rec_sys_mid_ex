@@ -118,6 +118,7 @@ class Folds:
 
     def evaluate(self, s: np.ndarray, params: dict, kind: str, t0: float) -> dict:
         preds = fill(H.top5(self.f_test, s), self.test, self.fallback)
+        self.last_preds = preds
         res = evaluate(preds, self.data_test)
         log_results("hybrid_v5", params, res, time.time() - t0,
                     f"fallback=popularity_n_weeks={POP_N}; selection=cov50; {kind}; v5")
@@ -136,21 +137,28 @@ def run(fd: Folds, idea: str, mode: str, members, seeds) -> dict:
                   "folds": folds, "fold_half_life": HALF_LIFE,
                   "n_trees": [int(model.best_iteration_ or model.n_estimators) for _, _, model in models]}
         out[kind] = {"params": params, "trees": [(m, s, n) for (m, s, _), n in zip(models, params["n_trees"])],
-                     **fd.evaluate(rank_avg(fd.f_test, sc) if len(sc) > 1 else sc[0], params, kind, t0)}
+                     **fd.evaluate(rank_avg(fd.f_test, sc) if len(sc) > 1 else sc[0], params, kind, t0),
+                     "preds": fd.last_preds}
         print(f"{idea} {mode} {kind}: " + ", ".join(f"{t} {out[kind][t]:.4f}" for t in TARGETS), flush=True)
     return out
 
 
-def write_final(fd: Folds, result: dict, mode: str, name: str, final_frame: pd.DataFrame, fin: WindowV4) -> str:
+def write_final(fd: Folds, result: dict, mode: str, name: str, final_frame: pd.DataFrame, fin: WindowV4,
+                out_dir=None, log_md: bool = True) -> str:
+    """Refit on the final folds and write `name`.csv to out_dir (default submissions/, logged in LOG.md)."""
     users = test_users()
     df = fd.training_set(MAIN, mode, validation=False)
     sc = [score(train(df, m[0], m[1], m[2], seed=s, n_estimators=n), final_frame) for m, s, n in result["main"]["trees"]]
     preds = fill(H.top5(final_frame, rank_avg(final_frame, sc)), users, fin.st.fallback)
-    path = ROOT / "submissions" / f"{name}.csv"
+    path = (out_dir or ROOT / "submissions") / f"{name}.csv"
     write_submission(preds, users, path)
     problems = check_submission(path, set(int(x) for x in fin.pool))
+    if not log_md:
+        return f"{path.name}: format {'OK' if not problems else problems}"
     log = ROOT / "submissions" / "LOG.md"
-    kept = [ln for ln in log.read_text(encoding="utf-8").splitlines() if not ln.startswith(f"| {path.name} |")]
+    if any(ln.startswith(f"| {path.name} |") for ln in log.read_text(encoding="utf-8").splitlines()):
+        return f"{path.name}: format {'OK' if not problems else problems} (LOG.md row kept unchanged)"
+    kept = log.read_text(encoding="utf-8").splitlines()
     kept.append(f"| {path.name} | hybrid v5 ({result['main']['params']['idea']}, {mode} labels): hybrid_v3_ens ensemble "
                 f"(lambdarank + binary, 3 seeds each) trained on folds {', '.join(MAIN)} (11-17->18-20 ... 11-27->28-30) "
                 f"with recency weights (half-life {HALF_LIFE} weeks) and all users; features weeks 11-30, pool = labelled "

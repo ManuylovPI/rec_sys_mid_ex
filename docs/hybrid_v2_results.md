@@ -1,3 +1,5 @@
+> **Superseded** (stage 7-8, any-overlap n_days labels). Kept as a record of how the work developed. The hidden leaderboard target turned out to be coverage-based, not any-overlap (docs/target_definition.md), and rows before the time-zone fix used shifted day counts (docs/errata.md). Current numbers: docs/results.md.
+
 # Hybrid v2 (slot habits): candidate generation + LightGBM re-ranker
 
 Produced by `python -m src.hybrid --slots` on 2026-10-22 17:20. Validation on the 1260 test users (history weeks 11-20, target weeks 21-30, same pool and fallback as all methods). Re-ranker trained on 3589 non-test users (182627 candidate rows). Candidates: top-20 of repeat, popularity, ALS, channel, slot lists (48.4 per test user).

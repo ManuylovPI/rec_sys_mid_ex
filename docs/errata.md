@@ -28,3 +28,26 @@ day counts.
 **Side note.** After the rebuild, `src.verify_join` sampled 280 users instead of 285, because `segment_id` is
 assigned by `row_number() OVER ()` without an ORDER BY, so the seed-42 reservoir sample of segment rows is not
 stable across rebuilds. The check again found 0 mismatched pairs.
+
+## 2. LightGBM hybrids are not bit-for-bit reproducible (found 2026-10-24)
+
+**What we saw.** Re-running the selected configurations with the same code, data and seeds (`src.report_tables`,
+twice: once on its own and once inside `src.run_all`) reproduced every single method exactly (popularity, ALS, CBF,
+repeat_cont50, repeat_cov, slot habits), but not the LightGBM re-rankers:
+
+| model | cov50 validation: original run | rebuild 1 | rebuild 2 (run_all) |
+|---|---|---|---|
+| hybrid_v2 setup | 0.4271 | 0.4260 | 0.4263 |
+| final setup (hybrid_v4_cov80) | 0.4270 | 0.4264 | 0.4265 |
+
+Regenerated submission files vs the files that were scored on Kaggle (rebuild 2): hybrid_v2.csv identical in 688 of
+1,260 rows (item overlap 95.4%); hybrid_v4_cov80.csv (= final.csv) identical in 824 of 1,260 rows (item overlap
+96.9%). The submitted files remain the ones in `submissions/`; regenerated copies go to `data/processed/regenerated/`.
+
+**Likely cause (not verified).** Several features are within-user ranks computed with `rank(method="first")` on
+DataFrames whose row order comes from DuckDB aggregations, which have no fixed output order. Ties are then broken
+differently from run to run, the feature values change slightly, and LightGBM (deterministic given its input) builds
+different trees. Sorting the inputs before ranking would likely fix this; it was not done before the deadline.
+
+**Size.** Validation varies by about +-0.001 between runs, which is smaller than every difference between methods
+reported in docs/results.md but similar to the differences between the late hybrid variants.
