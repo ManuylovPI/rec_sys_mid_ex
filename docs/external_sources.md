@@ -4,14 +4,15 @@ Sources consulted for ideas. No code was taken from any of them.
 
 ## 1. Prize-winning solution write-up for this competition
 
-- Title (as given by the project author): "Two-layered recommender system methodology: a prize-winning solution"
-- Venue: Towards Data Science
+- Author: Nikita Melentev
+- Title: "Two-layered recommender system methodology: a prize-winning solution"
+- Venue and date: Towards Data Science, published March 20, 2021
 - URL: https://towardsdatascience.com/two-layered-recommender-system-methodology-a-prize-winning-solution-c4bdb815b156
 - Added: 2026-10-22.
 - Verification status: **verified by the project author**, who opened and read the article on 2026-10-22 and
-  confirmed the title, URL and the points below (author name and publication date to be added by the project
-  author). The AI assistant could not open the page itself (HTTP 403 on 2026-10-22, also via the
-  medium.com/towards-data-science path); everything below is as reported by the project author.
+  confirmed the author, date, title, URL and the points below. The AI assistant could not open the page itself
+  (HTTP 403 on 2026-10-22, also via the medium.com/towards-data-science path); everything below is as reported by
+  the project author.
 - Points used:
   - a show counted as watched only if the user watched more than 80% of it without switching channels;
   - features: counts of watches at 30%, 50% and 80% coverage, the show's rank by count, the show's channel and
