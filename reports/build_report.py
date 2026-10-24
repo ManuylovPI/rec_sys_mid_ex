@@ -193,9 +193,17 @@ def main() -> None:
     out_html = REP / "manuilov_exam_report.html"
     out_html.write_text(page, encoding="utf-8")
     out_pdf = REP / "manuilov_exam_report.pdf"
+    tmp_pdf = REP / "manuilov_exam_report.tmp.pdf"  # Edge fails silently on a locked target, so print to a new file
+    tmp_pdf.unlink(missing_ok=True)
     subprocess.run([str(EDGE), "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-                    f"--print-to-pdf={out_pdf}", "--virtual-time-budget=10000", out_html.as_uri()],
+                    f"--print-to-pdf={tmp_pdf}", "--virtual-time-budget=10000", out_html.as_uri()],
                    check=True, capture_output=True)
+    if not tmp_pdf.exists() or full.encode() not in tmp_pdf.read_bytes():
+        raise SystemExit("Edge did not produce a PDF that links the current commit")
+    try:
+        tmp_pdf.replace(out_pdf)
+    except PermissionError:
+        raise SystemExit(f"{out_pdf} is locked (open in a PDF viewer?); close it and rerun. New PDF: {tmp_pdf}")
     print(f"built {out_pdf} from commit {full[:10]}")
 
 
