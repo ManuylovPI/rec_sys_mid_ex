@@ -149,7 +149,8 @@ def ai_stats(transcript: Path) -> str:
         if e.get("version"):
             versions.add(e["version"])
         att = e.get("attachment")
-        if e.get("type") == "attachment" and isinstance(att, dict) and att.get("type") == "queued_command":
+        if (e.get("type") == "attachment" and isinstance(att, dict) and att.get("type") == "queued_command"
+                and (att.get("origin") or {}).get("kind") == "human"):  # not background-task notifications
             queued += 1  # a message the user sent while the agent was working
         msg = e.get("message") or {}
         if e.get("type") == "assistant" and isinstance(msg, dict):
